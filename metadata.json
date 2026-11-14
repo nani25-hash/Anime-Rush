@@ -1,0 +1,6 @@
+{
+  "name": "Anime Rush",
+  "description": "Endless Runner 3D anime mobile game set in a moonlit sakura shrine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
