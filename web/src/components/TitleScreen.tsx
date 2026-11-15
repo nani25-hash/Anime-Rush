@@ -26,13 +26,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <div className="title-header-group">
         <div className="title-top-bar">
           <div className="record-pill interactive tabular" aria-label="Meilleur score">
-            <TrophyIcon size={17} />
+            <TrophyIcon size={18} />
             <span>RECORD {bestScore.toLocaleString('fr-FR')}</span>
           </div>
 
           <button
             type="button"
-            className="icon-btn interactive"
+            className="icon-btn metallic-btn interactive"
             onClick={onToggleMute}
             aria-label={muted ? 'Activer le son' : 'Couper le son'}
           >
@@ -43,60 +43,75 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="title-lockup" aria-label="Anime Rush">
           <svg
             className="title-logo-svg"
-            viewBox="0 0 360 112"
+            viewBox="0 0 380 136"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             role="img"
             aria-label="ANIME RUSH"
           >
             <defs>
-              <linearGradient id="animeGrad" x1="0" y1="0" x2="0" y2="54" gradientUnits="userSpaceOnUse">
+              <linearGradient id="plaqueWood" x1="0" y1="10" x2="0" y2="124" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#9A5328" />
+                <stop offset="50%" stopColor="#7C3D19" />
+                <stop offset="100%" stopColor="#4F230C" />
+              </linearGradient>
+              <linearGradient id="animeGrad" x1="0" y1="20" x2="0" y2="66" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="#FFFFFF" />
+                <stop offset="65%" stopColor="#F1F5F9" />
                 <stop offset="100%" stopColor="#CBD5E1" />
               </linearGradient>
-              <linearGradient id="rushGrad" x1="40" y1="52" x2="300" y2="105" gradientUnits="userSpaceOnUse">
+              <linearGradient id="rushGrad" x1="60" y1="68" x2="320" y2="122" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="#EF4444" />
                 <stop offset="50%" stopColor="#F97316" />
                 <stop offset="100%" stopColor="#FACC15" />
               </linearGradient>
             </defs>
+
+            {/* Wooden shrine signboard plaque behind logo */}
+            <path
+              d="M36 22L344 16L334 114L46 120Z"
+              fill="url(#plaqueWood)"
+              stroke="#2C1206"
+              strokeWidth="4.5"
+              strokeLinejoin="round"
+            />
+            <path d="M44 52L338 48" stroke="#3D1908" strokeWidth="2.2" opacity="0.65" />
+            <path d="M48 88L334 84" stroke="#3D1908" strokeWidth="2.2" opacity="0.65" />
+            <circle cx="52" cy="34" r="4" fill="#D97706" stroke="#2C1206" strokeWidth="1.5" />
+            <circle cx="328" cy="30" r="4" fill="#D97706" stroke="#2C1206" strokeWidth="1.5" />
+            <circle cx="58" cy="106" r="4" fill="#D97706" stroke="#2C1206" strokeWidth="1.5" />
+            <circle cx="322" cy="102" r="4" fill="#D97706" stroke="#2C1206" strokeWidth="1.5" />
+
             <text
-              x="170"
-              y="48"
+              x="190"
+              y="64"
               textAnchor="middle"
               fill="url(#animeGrad)"
-              stroke="#070B19"
-              strokeWidth="6"
+              stroke="#1A0F0A"
+              strokeWidth="7"
               paintOrder="stroke"
-              fontSize="44"
+              fontSize="48"
               fontWeight="900"
               fontStyle="italic"
-              letterSpacing="4"
+              letterSpacing="3"
             >
               ANIME
             </text>
             <text
-              x="180"
-              y="98"
+              x="190"
+              y="112"
               textAnchor="middle"
               fill="url(#rushGrad)"
-              stroke="#070B19"
-              strokeWidth="7"
+              stroke="#1A0F0A"
+              strokeWidth="8"
               paintOrder="stroke"
-              fontSize="50"
+              fontSize="54"
               fontWeight="900"
               fontStyle="italic"
-              letterSpacing="5"
+              letterSpacing="4"
             >
               RUSH
             </text>
-            <path
-              d="M312 18L318 32L332 38L318 44L312 58L306 44L292 38L306 32Z"
-              fill="#E2E8F0"
-              stroke="#070B19"
-              strokeWidth="3"
-            />
-            <circle cx="312" cy="38" r="4" fill="#F97316" />
           </svg>
         </div>
       </div>
@@ -107,7 +122,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <button
               key={q}
               type="button"
-              className={`quality-btn ${quality === q ? 'active' : ''}`}
+              className={`quality-btn quality-${q} ${quality === q ? 'active' : ''}`}
               onClick={() => onQualityChange(q)}
             >
               {QUALITY_PRESETS[q].label}
@@ -117,11 +132,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         <button type="button" className="play-cta" onClick={onPlay} data-testid="play-button">
           <PlayIcon size={24} />
-          <span>PLAY</span>
+          <span>JOUER</span>
         </button>
 
         <p className="control-hint">
-          Glisser : Gauche/Droite · Haut Sauter · Bas Glisser
+          ↔ GLISSER : Gauche/Droite · ↑ SAUTER · ↓ GLISSER
         </p>
       </div>
     </div>

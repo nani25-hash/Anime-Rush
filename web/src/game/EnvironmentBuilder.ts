@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { GAME_CONSTANTS, QualityPreset } from '../types/game';
-import { createNightSkyTexture, createRoadBumpTexture, createStoneRoadTexture } from './textures';
+import {
+  createAnimeTwilightSkyTexture,
+  createMoonGlowTexture,
+  createNeonSignTexture,
+  createRailwayTrackTexture,
+  createRoadBumpTexture,
+  createWoodGrainTexture,
+} from './textures';
+import { WorldCurveUniforms, applyWorldCurveShader } from './worldCurve';
 
 interface PetalState {
   x: number;
@@ -21,7 +29,7 @@ export class EnvironmentBuilder {
   private readonly petalInstancedMesh: THREE.InstancedMesh;
   private readonly petalStates: PetalState[] = [];
   private readonly maxPetals = 240;
-  private activePetalCount = 140;
+  private activePetalCount = 150;
 
   private readonly dummyMatrix = new THREE.Matrix4();
   private readonly dummyEuler = new THREE.Euler();
@@ -31,188 +39,333 @@ export class EnvironmentBuilder {
 
   private readonly sharedDisposables: Array<{ dispose: () => void }> = [];
 
-  constructor(scene: THREE.Scene) {
-    const roadTex = createStoneRoadTexture();
+  constructor(scene: THREE.Scene, curveUniforms: WorldCurveUniforms) {
+    const trackTex = createRailwayTrackTexture();
     const bumpTex = createRoadBumpTexture();
-    const skyTex = createNightSkyTexture();
-    this.sharedDisposables.push(roadTex, bumpTex, skyTex);
-
-    // Shared Materials
-    const roadMat = new THREE.MeshStandardMaterial({
-      map: roadTex,
-      bumpMap: bumpTex,
-      bumpScale: 0.04,
-      roughness: 0.72,
-      metalness: 0.12,
-    });
-    const curbMat = new THREE.MeshStandardMaterial({
-      color: 0x262e4a,
-      roughness: 0.65,
-      metalness: 0.2,
-    });
-    const toriiRedMat = new THREE.MeshStandardMaterial({
-      color: 0xd92b2b,
-      roughness: 0.38,
-      metalness: 0.18,
-    });
-    const darkWoodMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1523,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-    const lanternGlowMat = new THREE.MeshStandardMaterial({
-      color: 0xffd180,
-      emissive: 0xff9800,
-      emissiveIntensity: 1.8,
-      roughness: 0.3,
-    });
-    const sakuraLeafMat = new THREE.MeshStandardMaterial({
-      color: 0xff8fbd,
-      emissive: 0x6b1d45,
-      emissiveIntensity: 0.45,
-      roughness: 0.75,
-    });
-    const chakraTrimMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 1.2,
-      roughness: 0.3,
-    });
-    const groundAbyssMat = new THREE.MeshStandardMaterial({
-      color: 0x090d1e,
-      roughness: 0.95,
-    });
-
+    const skyTex = createAnimeTwilightSkyTexture();
+    const woodTex = createWoodGrainTexture();
+    const glowTex = createMoonGlowTexture();
+    const signDreamTex = createNeonSignTexture('夢はまだ終わらない', 'GOOD RUNS · BETTER DAYS', '#1e1b4b', '#f472b6');
+    const signRushTex = createNeonSignTexture('走 ANIME RUSH', 'TOKYO EXPRESS', '#0f172a', '#38bdf8');
+    const signSakuraTex = createNeonSignTexture('桜駅 SAKURA', 'SHINKANSEN', '#3b0764', '#facc15');
     this.sharedDisposables.push(
-      roadMat,
-      curbMat,
-      toriiRedMat,
-      darkWoodMat,
-      lanternGlowMat,
-      sakuraLeafMat,
-      chakraTrimMat,
-      groundAbyssMat,
+      trackTex,
+      bumpTex,
+      skyTex,
+      woodTex,
+      glowTex,
+      signDreamTex,
+      signRushTex,
+      signSakuraTex,
     );
 
-    // Shared Geometries
+    const trackMat = new THREE.MeshStandardMaterial({
+      map: trackTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.08,
+      roughness: 0.7,
+      metalness: 0.16,
+    });
+    const platformMat = new THREE.MeshStandardMaterial({
+      color: 0x323954,
+      roughness: 0.82,
+      metalness: 0.08,
+    });
+    const platformEdgeMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.25,
+      roughness: 0.5,
+    });
+    const buildingDarkMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2544,
+      roughness: 0.74,
+      metalness: 0.16,
+    });
+    const buildingSlateMat = new THREE.MeshStandardMaterial({
+      color: 0x2a335a,
+      roughness: 0.68,
+      metalness: 0.2,
+    });
+    const windowGlowMat = new THREE.MeshStandardMaterial({
+      color: 0xbae6fd,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.85,
+      roughness: 0.25,
+    });
+    const warmWindowMat = new THREE.MeshStandardMaterial({
+      color: 0xfef3c7,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.95,
+      roughness: 0.3,
+    });
+    const steelGantryMat = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      roughness: 0.45,
+      metalness: 0.65,
+    });
+    const toriiWoodMat = new THREE.MeshStandardMaterial({
+      map: woodTex,
+      color: 0xd93829,
+      roughness: 0.42,
+      metalness: 0.1,
+    });
+    const darkWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x1b1521,
+      roughness: 0.72,
+      metalness: 0.14,
+    });
+    const goldTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0x78350f,
+      emissiveIntensity: 0.35,
+      roughness: 0.3,
+      metalness: 0.8,
+    });
+    const sakuraPinkMat = new THREE.MeshStandardMaterial({
+      color: 0xf472b6,
+      emissive: 0x9d174d,
+      emissiveIntensity: 0.32,
+      roughness: 0.72,
+    });
+    const sakuraPaleMat = new THREE.MeshStandardMaterial({
+      color: 0xfbcfe8,
+      emissive: 0xbe185d,
+      emissiveIntensity: 0.22,
+      roughness: 0.68,
+    });
+    const signDreamMat = new THREE.MeshBasicMaterial({ map: signDreamTex });
+    const signRushMat = new THREE.MeshBasicMaterial({ map: signRushTex });
+    const signSakuraMat = new THREE.MeshBasicMaterial({ map: signSakuraTex });
+
+    const curvedMaterials: THREE.Material[] = [
+      trackMat,
+      platformMat,
+      platformEdgeMat,
+      buildingDarkMat,
+      buildingSlateMat,
+      windowGlowMat,
+      warmWindowMat,
+      steelGantryMat,
+      toriiWoodMat,
+      darkWoodMat,
+      goldTrimMat,
+      sakuraPinkMat,
+      sakuraPaleMat,
+      signDreamMat,
+      signRushMat,
+      signSakuraMat,
+    ];
+    for (const mat of curvedMaterials) {
+      applyWorldCurveShader(mat, curveUniforms);
+    }
+    this.sharedDisposables.push(...curvedMaterials);
+
+    // Track & Station Platform Geometries
     const roadGeo = new THREE.PlaneGeometry(
       GAME_CONSTANTS.ROAD_WIDTH,
       GAME_CONSTANTS.SEGMENT_LENGTH,
     );
-    const sideDeckGeo = new THREE.BoxGeometry(14, 0.8, GAME_CONSTANTS.SEGMENT_LENGTH);
-    const curbGeo = new THREE.BoxGeometry(0.45, 0.42, GAME_CONSTANTS.SEGMENT_LENGTH);
-    const trimStripGeo = new THREE.BoxGeometry(0.1, 0.08, GAME_CONSTANTS.SEGMENT_LENGTH);
-    const lanternBaseGeo = new THREE.BoxGeometry(0.6, 1.8, 0.6);
-    const lanternLampGeo = new THREE.BoxGeometry(0.5, 0.45, 0.5);
-    const lanternRoofGeo = new THREE.ConeGeometry(0.62, 0.45, 4);
-    const trunkGeo = new THREE.CylinderGeometry(0.24, 0.38, 4.0, 7);
-    const blossomGeo = new THREE.IcosahedronGeometry(1.7, 1);
-    const toriiPillarGeo = new THREE.CylinderGeometry(0.32, 0.36, 7.6, 10);
-    const toriiTopGeo = new THREE.BoxGeometry(10.6, 0.55, 0.75);
-    const toriiSubGeo = new THREE.BoxGeometry(9.2, 0.36, 0.55);
+    const platformGeo = new THREE.BoxGeometry(14, 0.75, GAME_CONSTANTS.SEGMENT_LENGTH);
+    const edgeLineGeo = new THREE.BoxGeometry(0.16, 0.08, GAME_CONSTANTS.SEGMENT_LENGTH);
+    const buildingBodyGeo = new THREE.BoxGeometry(4.2, 11.5, 8.8);
+    const buildingTallGeo = new THREE.BoxGeometry(4.8, 16.5, 9.4);
+    const windowStripGeo = new THREE.BoxGeometry(4.32, 0.75, 7.6);
+    const signGeo = new THREE.PlaneGeometry(4.2, 2.1);
+
+    // Sakura Tree & Shrub Geometries
+    const trunkGeo = new THREE.CylinderGeometry(0.22, 0.38, 4.4, 8);
+    const branchGeo = new THREE.CylinderGeometry(0.11, 0.18, 2.4, 7);
+    const blossomGeo = new THREE.IcosahedronGeometry(1.45, 1);
+
+    // Railway Catenary Gantry Geometries
+    const gantryPostGeo = new THREE.BoxGeometry(0.32, 7.2, 0.32);
+    const gantryBeamGeo = new THREE.BoxGeometry(10.2, 0.38, 0.42);
+    const wireGeo = new THREE.CylinderGeometry(0.03, 0.03, GAME_CONSTANTS.SEGMENT_LENGTH, 6);
+
+    // Vermilion Torii Gate Geometries
+    const toriiBaseGeo = new THREE.CylinderGeometry(0.46, 0.52, 0.65, 10);
+    const toriiPillarGeo = new THREE.CylinderGeometry(0.32, 0.37, 8.2, 12);
+    const toriiTopGeo = new THREE.BoxGeometry(11.0, 0.54, 0.78);
+    const toriiWingGeo = new THREE.BoxGeometry(1.75, 0.48, 0.78);
+    const toriiCapGeo = new THREE.BoxGeometry(11.5, 0.2, 0.86);
+    const toriiSubGeo = new THREE.BoxGeometry(9.8, 0.38, 0.54);
+    const toriiPlaqueGeo = new THREE.BoxGeometry(1.1, 1.2, 0.38);
+    const toriiPlaqueRimGeo = new THREE.BoxGeometry(1.24, 1.34, 0.28);
 
     this.sharedDisposables.push(
       roadGeo,
-      sideDeckGeo,
-      curbGeo,
-      trimStripGeo,
-      lanternBaseGeo,
-      lanternLampGeo,
-      lanternRoofGeo,
+      platformGeo,
+      edgeLineGeo,
+      buildingBodyGeo,
+      buildingTallGeo,
+      windowStripGeo,
+      signGeo,
       trunkGeo,
+      branchGeo,
       blossomGeo,
+      gantryPostGeo,
+      gantryBeamGeo,
+      wireGeo,
+      toriiBaseGeo,
       toriiPillarGeo,
       toriiTopGeo,
+      toriiWingGeo,
+      toriiCapGeo,
       toriiSubGeo,
+      toriiPlaqueGeo,
+      toriiPlaqueRimGeo,
     );
 
-    // Build reusable track segment pool
+    const signMats = [signDreamMat, signRushMat, signSakuraMat];
+
     for (let i = 0; i < GAME_CONSTANTS.SEGMENT_COUNT; i++) {
       const seg = new THREE.Group();
       seg.position.z = -i * GAME_CONSTANTS.SEGMENT_LENGTH;
 
-      const road = new THREE.Mesh(roadGeo, roadMat);
+      const road = new THREE.Mesh(roadGeo, trackMat);
       road.rotation.x = -Math.PI / 2;
       road.receiveShadow = true;
       seg.add(road);
 
-      // Left & right abyss decks + curbs + glowing chakra strips
+      // Left & Right raised Tokyo railway station platforms + buildings + sakura trees
       for (const side of [-1, 1] as const) {
-        const deck = new THREE.Mesh(sideDeckGeo, groundAbyssMat);
-        deck.position.set(side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 7.2), -0.42, 0);
-        seg.add(deck);
+        const plat = new THREE.Mesh(platformGeo, platformMat);
+        plat.position.set(side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 7.1), -0.1, 0);
+        plat.receiveShadow = true;
+        seg.add(plat);
 
-        const curb = new THREE.Mesh(curbGeo, curbMat);
-        curb.position.set(side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.22), 0.18, 0);
-        curb.receiveShadow = true;
-        seg.add(curb);
+        const safetyLine = new THREE.Mesh(edgeLineGeo, platformEdgeMat);
+        safetyLine.position.set(side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.22), 0.28, 0);
+        seg.add(safetyLine);
 
-        const strip = new THREE.Mesh(trimStripGeo, chakraTrimMat);
-        strip.position.set(side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.02), 0.38, 0);
-        seg.add(strip);
-      }
+        // Two Tokyo urban anime buildings per side per segment
+        for (let bIdx = 0; bIdx < 2; bIdx++) {
+          const zB = bIdx === 0 ? -6.2 : 6.2;
+          const isTall = (i + bIdx + (side === 1 ? 1 : 0)) % 2 === 0;
+          const bMesh = new THREE.Mesh(
+            isTall ? buildingTallGeo : buildingBodyGeo,
+            bIdx % 2 === 0 ? buildingDarkMat : buildingSlateMat,
+          );
+          const xB = side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 5.15);
+          bMesh.position.set(xB, isTall ? 8.2 : 5.7, zB);
+          bMesh.castShadow = true;
+          seg.add(bMesh);
 
-      // Stone lanterns (Toro) on both sides
-      for (const zLocal of [-6, 6]) {
-        for (const side of [-1, 1] as const) {
-          const xPos = side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 1.05);
-          const lantern = new THREE.Group();
-          lantern.position.set(xPos, 0, zLocal);
+          // Illuminated window bands
+          const levels = isTall ? [3.6, 6.2, 8.8, 11.4, 14.0] : [3.2, 5.8, 8.4];
+          for (let lv = 0; lv < levels.length; lv++) {
+            const win = new THREE.Mesh(
+              windowStripGeo,
+              (lv + i) % 2 === 0 ? windowGlowMat : warmWindowMat,
+            );
+            win.position.set(xB, levels[lv], zB);
+            seg.add(win);
+          }
 
-          const post = new THREE.Mesh(lanternBaseGeo, curbMat);
-          post.position.y = 0.9;
-          const lamp = new THREE.Mesh(lanternLampGeo, lanternGlowMat);
-          lamp.position.y = 2.02;
-          const roof = new THREE.Mesh(lanternRoofGeo, darkWoodMat);
-          roof.position.y = 2.45;
-          roof.rotation.y = Math.PI / 4;
-
-          lantern.add(post, lamp, roof);
-          seg.add(lantern);
+          // Vertical/angled neon Tokyo street billboard facing tracks
+          if ((i + bIdx) % 2 === 0) {
+            const sign = new THREE.Mesh(
+              signGeo,
+              signMats[(i + bIdx + (side > 0 ? 1 : 0)) % signMats.length],
+            );
+            sign.position.set(
+              side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 2.9),
+              4.6 + bIdx * 1.4,
+              zB,
+            );
+            sign.rotation.y = side === -1 ? Math.PI / 2 - 0.18 : -Math.PI / 2 + 0.18;
+            seg.add(sign);
+          }
         }
-      }
 
-      // Sakura trees along shrine outer promenade
-      for (const side of [-1, 1] as const) {
+        // Overhanging Sakura trees framing the tracks
         const tree = new THREE.Group();
-        const xTree = side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 3.6);
-        const zTree = side === -1 ? -3 : 4;
-        tree.position.set(xTree, 0, zTree);
+        const xTree = side * (GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 2.15);
+        const zTree = side === -1 ? 0.5 : -0.5;
+        tree.position.set(xTree, 0.25, zTree);
 
         const trunk = new THREE.Mesh(trunkGeo, darkWoodMat);
-        trunk.position.y = 2.0;
-        trunk.rotation.z = side * 0.08;
+        trunk.position.y = 2.1;
+        trunk.rotation.z = side * 0.18;
+        trunk.castShadow = true;
         tree.add(trunk);
 
-        const canopyA = new THREE.Mesh(blossomGeo, sakuraLeafMat);
-        canopyA.position.set(-side * 0.4, 4.3, 0);
-        canopyA.scale.set(1.25, 0.78, 1.15);
-        const canopyB = new THREE.Mesh(blossomGeo, sakuraLeafMat);
-        canopyB.position.set(side * 0.7, 3.85, 0.5);
-        canopyB.scale.set(0.9, 0.65, 0.9);
+        const branch = new THREE.Mesh(branchGeo, darkWoodMat);
+        branch.position.set(-side * 0.85, 3.9, 0.1);
+        branch.rotation.z = side * 0.72;
+        tree.add(branch);
 
-        tree.add(canopyA, canopyB);
+        const canopyOffsets: Array<[number, number, number, number, boolean]> = [
+          [-side * 0.4, 4.65, 0, 1.35, false],
+          [-side * 1.45, 4.35, 0.5, 1.08, true],
+          [side * 0.7, 4.05, -0.5, 1.12, false],
+          [-side * 0.8, 5.2, -0.35, 0.94, true],
+        ];
+        for (const [cx, cy, cz, cs, pale] of canopyOffsets) {
+          const puff = new THREE.Mesh(blossomGeo, pale ? sakuraPaleMat : sakuraPinkMat);
+          puff.position.set(cx, cy, cz);
+          puff.scale.set(cs * 1.24, cs * 0.76, cs * 1.12);
+          tree.add(puff);
+        }
         seg.add(tree);
       }
 
-      // Towering Torii gate spanning across the 3 lanes on every 2nd segment
-      if (i % 2 === 0) {
+      // Overhead steel catenary gantry + power wires along the railway
+      const gantry = new THREE.Group();
+      gantry.position.set(0, 0, 0);
+      const postX = GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.65;
+      const postL = new THREE.Mesh(gantryPostGeo, steelGantryMat);
+      postL.position.set(-postX, 3.6, 0);
+      const postR = new THREE.Mesh(gantryPostGeo, steelGantryMat);
+      postR.position.set(postX, 3.6, 0);
+      const crossBeam = new THREE.Mesh(gantryBeamGeo, steelGantryMat);
+      crossBeam.position.set(0, 6.9, 0);
+      gantry.add(postL, postR, crossBeam);
+
+      for (const laneOffset of [-GAME_CONSTANTS.LANE_WIDTH, 0, GAME_CONSTANTS.LANE_WIDTH]) {
+        const wire = new THREE.Mesh(wireGeo, steelGantryMat);
+        wire.rotation.x = Math.PI / 2;
+        wire.position.set(laneOffset, 6.55, 0);
+        gantry.add(wire);
+      }
+      seg.add(gantry);
+
+      // Grand Vermilion Torii Gate spanning tracks every 2nd segment (matches Mount Fuji & Torii mockup!)
+      if (i % 2 === 1) {
         const torii = new THREE.Group();
-        torii.position.set(0, 0, -GAME_CONSTANTS.SEGMENT_LENGTH * 0.45);
+        torii.position.set(0, 0, -GAME_CONSTANTS.SEGMENT_LENGTH * 0.42);
 
-        const leftCol = new THREE.Mesh(toriiPillarGeo, toriiRedMat);
-        leftCol.position.set(-GAME_CONSTANTS.ROAD_WIDTH * 0.5 - 0.35, 3.8, 0);
-        const rightCol = new THREE.Mesh(toriiPillarGeo, toriiRedMat);
-        rightCol.position.set(GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.35, 3.8, 0);
+        const pillarX = GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.48;
+        for (const side of [-1, 1] as const) {
+          const base = new THREE.Mesh(toriiBaseGeo, darkWoodMat);
+          base.position.set(side * pillarX, 0.32, 0);
+          const col = new THREE.Mesh(toriiPillarGeo, toriiWoodMat);
+          col.position.set(side * pillarX, 4.1, 0);
+          col.castShadow = true;
+          torii.add(base, col);
+        }
 
-        const kasagi = new THREE.Mesh(toriiTopGeo, toriiRedMat);
-        kasagi.position.set(0, 7.65, 0);
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(11.1, 0.24, 0.85), darkWoodMat);
-        cap.position.set(0, 8.0, 0);
-        const nuki = new THREE.Mesh(toriiSubGeo, toriiRedMat);
-        nuki.position.set(0, 6.45, 0);
+        const kasagi = new THREE.Mesh(toriiTopGeo, toriiWoodMat);
+        kasagi.position.set(0, 8.15, 0);
+        const leftWing = new THREE.Mesh(toriiWingGeo, toriiWoodMat);
+        leftWing.position.set(-5.85, 8.3, 0);
+        leftWing.rotation.z = -0.18;
+        const rightWing = new THREE.Mesh(toriiWingGeo, toriiWoodMat);
+        rightWing.position.set(5.85, 8.3, 0);
+        rightWing.rotation.z = 0.18;
 
-        torii.add(leftCol, rightCol, kasagi, cap, nuki);
+        const cap = new THREE.Mesh(toriiCapGeo, darkWoodMat);
+        cap.position.set(0, 8.45, 0);
+        const nuki = new THREE.Mesh(toriiSubGeo, toriiWoodMat);
+        nuki.position.set(0, 6.85, 0);
+
+        const plaqueRim = new THREE.Mesh(toriiPlaqueRimGeo, goldTrimMat);
+        plaqueRim.position.set(0, 7.46, 0);
+        const plaque = new THREE.Mesh(toriiPlaqueGeo, darkWoodMat);
+        plaque.position.set(0, 7.46, 0);
+
+        torii.add(kasagi, leftWing, rightWing, cap, nuki, plaqueRim, plaque);
         seg.add(torii);
       }
 
@@ -220,17 +373,18 @@ export class EnvironmentBuilder {
       this.segments.push(seg);
     }
 
-    // Build distant Moon + Pagoda + Sky backdrop (follows runner Z so horizon never closes in)
-    this.buildHorizonBackdrop(scene, skyTex, darkWoodMat, lanternGlowMat, toriiRedMat);
+    // Build Horizon: Anime Twilight Sky + Snow-Capped Mount Fuji + Tokyo Skyline
+    this.buildHorizonBackdrop(scene, skyTex, glowTex, buildingDarkMat, warmWindowMat);
 
-    // Build InstancedMesh for drifting Sakura Petals
-    const petalGeo = new THREE.PlaneGeometry(0.18, 0.12);
+    // Drifting Sakura Petals (InstancedMesh)
+    const petalGeo = new THREE.PlaneGeometry(0.2, 0.13);
     const petalMat = new THREE.MeshBasicMaterial({
-      color: 0xffb3d1,
+      color: 0xffb8d9,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.92,
     });
+    applyWorldCurveShader(petalMat, curveUniforms);
     this.sharedDisposables.push(petalGeo, petalMat);
 
     this.petalInstancedMesh = new THREE.InstancedMesh(petalGeo, petalMat, this.maxPetals);
@@ -240,8 +394,8 @@ export class EnvironmentBuilder {
         x: (Math.random() - 0.5) * 18,
         y: 1 + Math.random() * 8,
         z: -Math.random() * 55,
-        vx: -0.6 - Math.random() * 0.9,
-        vy: -0.8 - Math.random() * 0.9,
+        vx: -0.65 - Math.random() * 0.95,
+        vy: -0.75 - Math.random() * 0.85,
         vz: 1.5 + Math.random() * 2.5,
         rx: Math.random() * Math.PI,
         ry: Math.random() * Math.PI,
@@ -255,58 +409,73 @@ export class EnvironmentBuilder {
   private buildHorizonBackdrop(
     scene: THREE.Scene,
     skyTex: THREE.CanvasTexture,
-    darkWoodMat: THREE.Material,
+    glowTex: THREE.CanvasTexture,
+    cityMat: THREE.Material,
     glowMat: THREE.Material,
-    toriiRedMat: THREE.Material,
   ): void {
-    // Large sky card behind horizon
-    const skyGeo = new THREE.PlaneGeometry(260, 140);
+    const skyGeo = new THREE.PlaneGeometry(340, 175);
     const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, fog: false });
     this.sharedDisposables.push(skyGeo, skyMat);
 
     const skyCard = new THREE.Mesh(skyGeo, skyMat);
-    skyCard.position.set(0, 44, -145);
+    skyCard.position.set(0, 56, -165);
     this.backdropGroup.add(skyCard);
 
-    // Luminous Full Moon
-    const moonGeo = new THREE.CircleGeometry(18, 32);
-    const moonMat = new THREE.MeshBasicMaterial({ color: 0xf1f5ff, fog: false });
-    this.sharedDisposables.push(moonGeo, moonMat);
-    const moon = new THREE.Mesh(moonGeo, moonMat);
-    moon.position.set(4, 34, -142);
-    this.backdropGroup.add(moon);
+    // Warm sunset/sakura aura glow behind Mount Fuji
+    const haloGeo = new THREE.PlaneGeometry(130, 110);
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: glowTex,
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    this.sharedDisposables.push(haloGeo, haloMat);
+    const fujiGlow = new THREE.Mesh(haloGeo, haloMat);
+    fujiGlow.position.set(0, 24, -158);
+    this.backdropGroup.add(fujiGlow);
 
-    // Distant illuminated 3-tier Japanese Pagoda on the right skyline (matches key art)
-    const pagoda = new THREE.Group();
-    pagoda.position.set(34, 0, -110);
-    for (let tier = 0; tier < 3; tier++) {
-      const w = 10 - tier * 2.2;
-      const y = 6 + tier * 6.5;
-      const body = new THREE.Mesh(new THREE.BoxGeometry(w * 0.62, 4.5, w * 0.62), darkWoodMat);
-      body.position.y = y;
-      const windowBand = new THREE.Mesh(new THREE.BoxGeometry(w * 0.65, 1.5, w * 0.65), glowMat);
-      windowBand.position.y = y + 0.4;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.85, 2.4, 4), darkWoodMat);
-      roof.position.y = y + 3.2;
-      roof.rotation.y = Math.PI / 4;
-      pagoda.add(body, windowBand, roof);
+    // Iconic 3D Snow-Capped Mount Fuji centered down the railway horizon!
+    const fujiBaseGeo = new THREE.ConeGeometry(62, 36, 32, 1, false);
+    const fujiBaseMat = new THREE.MeshBasicMaterial({ color: 0x3b4986, fog: false });
+    const fujiSnowGeo = new THREE.ConeGeometry(22.5, 13.4, 24, 1, false);
+    const fujiSnowMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, fog: false });
+    this.sharedDisposables.push(fujiBaseGeo, fujiBaseMat, fujiSnowGeo, fujiSnowMat);
+
+    const fuji = new THREE.Group();
+    fuji.position.set(0, 0, -148);
+    const mountainBody = new THREE.Mesh(fujiBaseGeo, fujiBaseMat);
+    mountainBody.position.y = 18;
+    mountainBody.scale.set(1.25, 1.0, 0.75);
+
+    const snowCap = new THREE.Mesh(fujiSnowGeo, fujiSnowMat);
+    snowCap.position.set(0, 29.5, 0.4);
+    snowCap.scale.set(1.25, 1.0, 0.75);
+    fuji.add(mountainBody, snowCap);
+    this.backdropGroup.add(fuji);
+
+    // Distant Tokyo skyline towers flanking Mount Fuji
+    const towerGeo = new THREE.BoxGeometry(8, 30, 8);
+    const towerLightGeo = new THREE.BoxGeometry(8.2, 2.2, 8.2);
+    this.sharedDisposables.push(towerGeo, towerLightGeo);
+
+    const skylinePositions: Array<[number, number, number]> = [
+      [-58, 14, -130],
+      [-44, 19, -134],
+      [-32, 11, -126],
+      [34, 13, -128],
+      [48, 22, -135],
+      [62, 15, -130],
+    ];
+    for (const [tx, th, tz] of skylinePositions) {
+      const tMesh = new THREE.Mesh(towerGeo, cityMat);
+      tMesh.position.set(tx, th * 0.5, tz);
+      tMesh.scale.y = th / 30;
+      const topBeacon = new THREE.Mesh(towerLightGeo, glowMat);
+      topBeacon.position.set(tx, th - 2, tz);
+      this.backdropGroup.add(tMesh, topBeacon);
     }
-    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.35, 6, 6), glowMat);
-    spire.position.y = 26;
-    pagoda.add(spire);
-    this.backdropGroup.add(pagoda);
-
-    // Distant Shrine Torii silhouette on the left skyline
-    const farTorii = new THREE.Group();
-    farTorii.position.set(-28, 0, -100);
-    const pL = new THREE.Mesh(new THREE.BoxGeometry(1.1, 14, 1.1), toriiRedMat);
-    pL.position.set(-5, 7, 0);
-    const pR = new THREE.Mesh(new THREE.BoxGeometry(1.1, 14, 1.1), toriiRedMat);
-    pR.position.set(5, 7, 0);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(15, 1.2, 1.4), toriiRedMat);
-    top.position.set(0, 14.2, 0);
-    farTorii.add(pL, pR, top);
-    this.backdropGroup.add(farTorii);
 
     scene.add(this.backdropGroup);
   }
@@ -324,10 +493,8 @@ export class EnvironmentBuilder {
   }
 
   public update(dt: number, runnerZ: number, worldSpeed: number): void {
-    // Keep horizon backdrop anchored relative to runner Z
     this.backdropGroup.position.z = runnerZ;
 
-    // Recycle passed track segments forward
     const recycleThreshold = runnerZ + GAME_CONSTANTS.SEGMENT_LENGTH * 1.25;
     const totalLength = GAME_CONSTANTS.SEGMENT_COUNT * GAME_CONSTANTS.SEGMENT_LENGTH;
     for (const seg of this.segments) {
@@ -336,7 +503,6 @@ export class EnvironmentBuilder {
       }
     }
 
-    // Update drifting sakura petals around runner
     for (let i = 0; i < this.activePetalCount; i++) {
       const p = this.petalStates[i];
       p.x += p.vx * dt;
@@ -348,7 +514,7 @@ export class EnvironmentBuilder {
       if (p.y < 0.2 || p.z > runnerZ + 6) {
         p.x = (Math.random() - 0.5) * 18;
         p.y = 4.5 + Math.random() * 6.5;
-        p.z = runnerZ - 18 - Math.random() * 42;
+        p.z = runnerZ - 18 - Math.random() * 44;
       }
 
       this.dummyPos.set(p.x, p.y, p.z);

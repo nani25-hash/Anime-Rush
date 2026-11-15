@@ -1,0 +1,157 @@
+{
+  "entities": {
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "description": "Authenticated player profile, economy, equipment, inventory, missions, pass, event, and achievements.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "displayName": { "type": "string", "description": "Player pseudonym (1-30 chars)." },
+        "displayNameLower": { "type": "string", "description": "Lowercase pseudonym for search." },
+        "photoUrl": { "type": "string", "description": "Optional avatar URL." },
+        "level": { "type": "integer", "description": "Player account level." },
+        "xp": { "type": "integer", "description": "Current level XP." },
+        "xpToNextLevel": { "type": "integer", "description": "XP required for next level." },
+        "coins": { "type": "integer", "description": "In-game gold cat coins." },
+        "gems": { "type": "integer", "description": "In-game sakura gems." },
+        "bestScore": { "type": "integer", "description": "Highest run score." },
+        "totalDistance": { "type": "integer", "description": "Cumulative distance run in meters." },
+        "totalRuns": { "type": "integer", "description": "Total completed runs." },
+        "totalCoinsCollected": { "type": "integer", "description": "Total coins collected across all runs." },
+        "activeMultiplier": { "type": "integer", "description": "Current score multiplier (1..10)." },
+        "multiplierExpiresAt": { "type": "integer", "description": "Epoch millis when temporary multiplier expires, 0 if inactive." },
+        "equippedHeroId": { "type": "string", "description": "Currently selected 3D hero ID." },
+        "equippedCompanionId": { "type": "string", "description": "Currently selected 3D Shiba companion variant ID." },
+        "unlockedHeroIds": { "type": "array", "description": "IDs of unlocked heroes." },
+        "unlockedCompanionIds": { "type": "array", "description": "IDs of unlocked companions." },
+        "collectionIds": { "type": "array", "description": "IDs of unlocked anime collectibles/cards." },
+        "inventoryMagnets": { "type": "integer", "description": "Owned Magnet consumables." },
+        "inventoryShields": { "type": "integer", "description": "Owned Shield consumables." },
+        "inventoryMultipliers": { "type": "integer", "description": "Owned x5 Multiplier consumables." },
+        "inventoryHeadStarts": { "type": "integer", "description": "Owned Head Start consumables." },
+        "nextFreeChestAt": { "type": "integer", "description": "Epoch millis when the next Free Chest becomes claimable." },
+        "seasonLevel": { "type": "integer", "description": "Season 1 pass level." },
+        "seasonXp": { "type": "integer", "description": "Season 1 pass XP." },
+        "claimedSeasonTiers": { "type": "array", "description": "Season pass tiers already claimed." },
+        "eventSakuraTokens": { "type": "integer", "description": "Sakura Event tokens collected." },
+        "claimedEventMilestones": { "type": "array", "description": "IDs of claimed Sakura event milestones." },
+        "claimedAchievementIds": { "type": "array", "description": "IDs of claimed achievements." },
+        "dailyMissionCoins": { "type": "integer", "description": "Progress toward daily coin mission." },
+        "dailyMissionCoinsClaimed": { "type": "boolean", "description": "Whether daily coin mission reward is claimed." },
+        "dailyMissionRuns": { "type": "integer", "description": "Progress toward daily runs mission." },
+        "dailyMissionRunsClaimed": { "type": "boolean", "description": "Whether daily runs mission reward is claimed." },
+        "dailyMissionResetKey": { "type": "string", "description": "YYYY-MM-DD key for daily mission cycle." },
+        "weeklyMissionDistance": { "type": "integer", "description": "Progress toward weekly distance mission." },
+        "weeklyMissionDistanceClaimed": { "type": "boolean", "description": "Whether weekly distance mission reward is claimed." },
+        "weeklyMissionJumps": { "type": "integer", "description": "Progress toward weekly jumps mission." },
+        "weeklyMissionJumpsClaimed": { "type": "boolean", "description": "Whether weekly jumps mission reward is claimed." },
+        "weeklyMissionResetKey": { "type": "string", "description": "YYYY-Www key for weekly mission cycle." },
+        "totalJumps": { "type": "integer", "description": "Lifetime jumps." },
+        "totalSlides": { "type": "integer", "description": "Lifetime slides." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "uid", "displayName", "displayNameLower", "level", "xp", "xpToNextLevel",
+        "coins", "gems", "bestScore", "totalDistance", "totalRuns", "totalCoinsCollected",
+        "activeMultiplier", "multiplierExpiresAt", "equippedHeroId", "equippedCompanionId",
+        "unlockedHeroIds", "unlockedCompanionIds", "collectionIds",
+        "inventoryMagnets", "inventoryShields", "inventoryMultipliers", "inventoryHeadStarts",
+        "nextFreeChestAt", "seasonLevel", "seasonXp", "claimedSeasonTiers",
+        "eventSakuraTokens", "claimedEventMilestones", "claimedAchievementIds",
+        "dailyMissionCoins", "dailyMissionCoinsClaimed", "dailyMissionRuns", "dailyMissionRunsClaimed", "dailyMissionResetKey",
+        "weeklyMissionDistance", "weeklyMissionDistanceClaimed", "weeklyMissionJumps", "weeklyMissionJumpsClaimed", "weeklyMissionResetKey",
+        "totalJumps", "totalSlides", "createdAt", "updatedAt"
+      ]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public competitive ranking & player search summary (no PII).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Player UID." },
+        "displayName": { "type": "string", "description": "Public pseudonym." },
+        "displayNameLower": { "type": "string", "description": "Lowercase pseudonym for search." },
+        "level": { "type": "integer", "description": "Account level." },
+        "bestScore": { "type": "integer", "description": "Best run score." },
+        "equippedHeroId": { "type": "string", "description": "Equipped hero ID." },
+        "equippedCompanionId": { "type": "string", "description": "Equipped companion ID." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["uid", "displayName", "displayNameLower", "level", "bestScore", "equippedHeroId", "equippedCompanionId", "updatedAt"]
+    },
+    "FriendLink": {
+      "title": "FriendLink",
+      "description": "Confirmed friend edge stored under a user's friends subcollection.",
+      "type": "object",
+      "properties": {
+        "friendUid": { "type": "string", "description": "UID of the friend." },
+        "displayName": { "type": "string", "description": "Friend display name." },
+        "level": { "type": "integer", "description": "Friend level." },
+        "bestScore": { "type": "integer", "description": "Friend best score." },
+        "equippedHeroId": { "type": "string", "description": "Friend equipped hero." },
+        "requestId": { "type": "string", "description": "Originating accepted friend request ID." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["friendUid", "displayName", "level", "bestScore", "equippedHeroId", "requestId", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend invitation between two authenticated players.",
+      "type": "object",
+      "properties": {
+        "fromUid": { "type": "string", "description": "Sender UID." },
+        "fromDisplayName": { "type": "string", "description": "Sender display name." },
+        "fromLevel": { "type": "integer", "description": "Sender account level." },
+        "toUid": { "type": "string", "description": "Recipient UID." },
+        "toDisplayName": { "type": "string", "description": "Recipient display name." },
+        "participants": { "type": "array", "description": "Two-element list [fromUid, toUid]." },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"], "description": "Request status." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["fromUid", "fromDisplayName", "fromLevel", "toUid", "toDisplayName", "participants", "status", "createdAt", "updatedAt"]
+    },
+    "InboxMessage": {
+      "title": "InboxMessage",
+      "description": "Player inbox notification or reward gift.",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string", "description": "Sender UID (own UID for system rewards or friend UID)." },
+        "senderName": { "type": "string", "description": "Sender display label." },
+        "title": { "type": "string", "description": "Message title." },
+        "body": { "type": "string", "description": "Message body." },
+        "type": { "type": "string", "enum": ["system", "reward", "friend_gift"], "description": "Message type." },
+        "rewardCoins": { "type": "integer", "description": "Coins attached." },
+        "rewardGems": { "type": "integer", "description": "Gems attached." },
+        "read": { "type": "boolean", "description": "Whether the message was read." },
+        "claimed": { "type": "boolean", "description": "Whether attached rewards were claimed." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["senderUid", "senderName", "title", "body", "type", "rewardCoins", "rewardGems", "read", "claimed", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/PlayerProfile" },
+      "description": "Private authenticated player progression and economy document."
+    },
+    "/users/{userId}/friends/{friendUid}": {
+      "schema": { "$ref": "#/entities/FriendLink" },
+      "description": "User-scoped friends list."
+    },
+    "/users/{userId}/inbox/{messageId}": {
+      "schema": { "$ref": "#/entities/InboxMessage" },
+      "description": "User-scoped inbox messages and reward gifts."
+    },
+    "/leaderboard/{userId}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Public leaderboard & player discovery profile (no PII)."
+    },
+    "/friendRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Friend invitations between players."
+    }
+  }
+}

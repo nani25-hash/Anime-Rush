@@ -1,6 +1,6 @@
 import React from 'react';
 import { HudSnapshot } from '../types/game';
-import { CoinIcon, PauseIcon } from './Icons';
+import { CoinIcon, GateGoalIcon, PauseIcon } from './Icons';
 
 interface GameHudProps {
   hud: HudSnapshot;
@@ -8,8 +8,13 @@ interface GameHudProps {
 }
 
 export const GameHud: React.FC<GameHudProps> = ({ hud, onPause }) => {
+  const milestoneSpan = 250;
+  const progressMeters = hud.distance % milestoneSpan;
+  const progressPct = Math.min(100, Math.max(4, (progressMeters / milestoneSpan) * 100));
+  const nextGateMeters = Math.floor(hud.distance / milestoneSpan) * milestoneSpan + milestoneSpan;
+
   return (
-    <div className="overlay-layer">
+    <div className={`overlay-layer${hud.dangerActive ? ' hud-danger-ring' : ''}`}>
       <div className="hud-top-row">
         <div className="hud-stats-cluster tabular">
           <div className="hud-score-card">
@@ -25,12 +30,17 @@ export const GameHud: React.FC<GameHudProps> = ({ hud, onPause }) => {
             <div className="hud-chip hud-speed-chip">
               <span>{hud.speedMultiplier.toFixed(1)}x</span>
             </div>
+            {hud.dangerActive && (
+              <div className="hud-chip hud-danger-chip" data-testid="danger-badge">
+                <span>DANGER</span>
+              </div>
+            )}
           </div>
         </div>
 
         <button
           type="button"
-          className="icon-btn interactive"
+          className="icon-btn metallic-btn interactive"
           onClick={onPause}
           aria-label="Pause"
           data-testid="pause-button"
@@ -41,7 +51,18 @@ export const GameHud: React.FC<GameHudProps> = ({ hud, onPause }) => {
 
       {hud.milestoneLabel && <div className="milestone-banner">{hud.milestoneLabel}</div>}
 
-      <div />
+      <div className="hud-milestone-bar tabular" aria-label={`Prochain palier ${nextGateMeters} mètres`}>
+        <div className="hud-milestone-track">
+          <div className="hud-milestone-fill" style={{ width: `${progressPct}%` }} />
+          <div className="hud-milestone-marker" style={{ left: `${progressPct}%` }}>
+            <span>{hud.distance}m</span>
+          </div>
+        </div>
+        <div className="hud-milestone-goal">
+          <GateGoalIcon size={18} />
+          <span>{nextGateMeters}m</span>
+        </div>
+      </div>
     </div>
   );
 };

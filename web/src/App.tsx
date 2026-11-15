@@ -40,6 +40,7 @@ export const App: React.FC = () => {
     bestScore: loadBestScore(),
     isNewRecord: false,
     milestoneLabel: null,
+    dangerActive: false,
   }));
 
   useEffect(() => {

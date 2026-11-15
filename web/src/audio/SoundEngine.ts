@@ -91,6 +91,14 @@ export class SoundEngine {
     this.tone(ctx, freq * 1.5, freq * 1.5, 0.09, 'triangle', 0.05, now + 0.025);
   }
 
+  public playBump(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 210, 88, 0.18, 'triangle', 0.22, now);
+    this.noiseBurst(ctx, 0.1, 0.09, now);
+  }
+
   public playCrash(): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
@@ -98,6 +106,38 @@ export class SoundEngine {
     this.tone(ctx, 160, 38, 0.34, 'sawtooth', 0.22, now);
     this.tone(ctx, 95, 32, 0.38, 'sine', 0.28, now);
     this.noiseBurst(ctx, 0.22, 0.16, now);
+  }
+
+  public playPowerup(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 440, 880, 0.16, 'triangle', 0.14, now);
+    this.tone(ctx, 660, 1320, 0.2, 'sine', 0.12, now + 0.06);
+  }
+
+  public playShieldBreak(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 720, 260, 0.22, 'triangle', 0.16, now);
+    this.noiseBurst(ctx, 0.12, 0.08, now);
+  }
+
+  public playChestOpen(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 523.25, 523.25, 0.12, 'triangle', 0.12, now);
+    this.tone(ctx, 659.25, 659.25, 0.12, 'triangle', 0.12, now + 0.08);
+    this.tone(ctx, 783.99, 1046.5, 0.28, 'sine', 0.16, now + 0.16);
+  }
+
+  public playUiTap(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 620, 780, 0.055, 'sine', 0.06, now);
   }
 
   private tone(

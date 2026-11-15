@@ -31,3 +31,19 @@ export function boxesOverlap(a: AabbBox, b: AabbBox, yTolerance = 0.08): boolean
   if (a.maxX < b.minX || a.minX > b.maxX) return false;
   return a.maxY > b.minY + yTolerance && a.minY < b.maxY - yTolerance;
 }
+
+/**
+ * Classifies an obstacle collision as a recoverable side-graze ("bump")
+ * when the runner is switching lanes and clips the lateral edge rather than
+ * hitting the front face dead-on (inspired by Subway Surfers / PlayerController.cs).
+ */
+export function isSideGrazeCollision(
+  runnerX: number,
+  obstacleCenterX: number,
+  obstacleHalfWidth: number,
+  isChangingLane: boolean,
+): boolean {
+  if (!isChangingLane) return false;
+  const lateralOffset = Math.abs(runnerX - obstacleCenterX);
+  return lateralOffset >= obstacleHalfWidth * 0.55;
+}

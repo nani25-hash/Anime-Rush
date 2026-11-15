@@ -1,0 +1,364 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default-deny all unspecified paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidString(s, minLen, maxLen) {
+      return s is string && s.size() >= minLen && s.size() <= maxLen;
+    }
+
+    function isValidStringList(lst, minLen, maxLen) {
+      return lst is list &&
+             lst.size() >= minLen &&
+             lst.size() <= maxLen &&
+             (lst.size() == 0 || (lst[0] is string && lst[0].size() <= 64));
+    }
+
+    function isValidIntList(lst, maxLen) {
+      return lst is list &&
+             lst.size() <= maxLen &&
+             (lst.size() == 0 || lst[0] is int);
+    }
+
+    function isFriendOf(targetUid, callerUid) {
+      return exists(/databases/$(database)/documents/users/$(targetUid)/friends/$(callerUid));
+    }
+
+    function userProfileKeys() {
+      return [
+        'uid', 'displayName', 'displayNameLower', 'photoUrl', 'level', 'xp', 'xpToNextLevel',
+        'coins', 'gems', 'bestScore', 'totalDistance', 'totalRuns', 'totalCoinsCollected',
+        'activeMultiplier', 'multiplierExpiresAt', 'equippedHeroId', 'equippedCompanionId',
+        'unlockedHeroIds', 'unlockedCompanionIds', 'collectionIds',
+        'inventoryMagnets', 'inventoryShields', 'inventoryMultipliers', 'inventoryHeadStarts',
+        'nextFreeChestAt', 'seasonLevel', 'seasonXp', 'claimedSeasonTiers',
+        'eventSakuraTokens', 'claimedEventMilestones', 'claimedAchievementIds',
+        'dailyMissionCoins', 'dailyMissionCoinsClaimed', 'dailyMissionRuns', 'dailyMissionRunsClaimed', 'dailyMissionResetKey',
+        'weeklyMissionDistance', 'weeklyMissionDistanceClaimed', 'weeklyMissionJumps', 'weeklyMissionJumpsClaimed', 'weeklyMissionResetKey',
+        'totalJumps', 'totalSlides', 'createdAt', 'updatedAt'
+      ];
+    }
+
+    function isValidUserCore(data, userId) {
+      return data.uid == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 30 &&
+             data.displayNameLower is string && data.displayNameLower.size() >= 1 && data.displayNameLower.size() <= 30 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.level is int && data.level >= 1 && data.level <= 999 &&
+             data.xp is int && data.xp >= 0 &&
+             data.xpToNextLevel is int && data.xpToNextLevel >= 100 &&
+             data.coins is int && data.coins >= 0 &&
+             data.gems is int && data.gems >= 0 &&
+             data.bestScore is int && data.bestScore >= 0 &&
+             data.totalDistance is int && data.totalDistance >= 0 &&
+             data.totalRuns is int && data.totalRuns >= 0 &&
+             data.totalCoinsCollected is int && data.totalCoinsCollected >= 0 &&
+             data.activeMultiplier is int && data.activeMultiplier >= 1 && data.activeMultiplier <= 10 &&
+             data.multiplierExpiresAt is int && data.multiplierExpiresAt >= 0;
+    }
+
+    function isValidUserLoadout(data) {
+      return data.equippedHeroId is string && data.equippedHeroId.size() >= 1 && data.equippedHeroId.size() <= 64 &&
+             data.equippedCompanionId is string && data.equippedCompanionId.size() >= 1 && data.equippedCompanionId.size() <= 64 &&
+             data.unlockedHeroIds is list && data.unlockedHeroIds.size() >= 1 && data.unlockedHeroIds.size() <= 32 && (data.unlockedHeroIds[0] is string) &&
+             data.unlockedCompanionIds is list && data.unlockedCompanionIds.size() >= 1 && data.unlockedCompanionIds.size() <= 32 && (data.unlockedCompanionIds[0] is string) &&
+             data.collectionIds is list && data.collectionIds.size() <= 64 && (data.collectionIds.size() == 0 || data.collectionIds[0] is string) &&
+             data.inventoryMagnets is int && data.inventoryMagnets >= 0 &&
+             data.inventoryShields is int && data.inventoryShields >= 0 &&
+             data.inventoryMultipliers is int && data.inventoryMultipliers >= 0 &&
+             data.inventoryHeadStarts is int && data.inventoryHeadStarts >= 0 &&
+             data.nextFreeChestAt is int && data.nextFreeChestAt >= 0;
+    }
+
+    function isValidUserMissions(data) {
+      return data.seasonLevel is int && data.seasonLevel >= 1 && data.seasonLevel <= 100 &&
+             data.seasonXp is int && data.seasonXp >= 0 &&
+             data.claimedSeasonTiers is list && data.claimedSeasonTiers.size() <= 100 && (data.claimedSeasonTiers.size() == 0 || data.claimedSeasonTiers[0] is int) &&
+             data.eventSakuraTokens is int && data.eventSakuraTokens >= 0 &&
+             data.claimedEventMilestones is list && data.claimedEventMilestones.size() <= 32 && (data.claimedEventMilestones.size() == 0 || data.claimedEventMilestones[0] is string) &&
+             data.claimedAchievementIds is list && data.claimedAchievementIds.size() <= 64 && (data.claimedAchievementIds.size() == 0 || data.claimedAchievementIds[0] is string) &&
+             data.dailyMissionCoins is int && data.dailyMissionCoins >= 0 &&
+             data.dailyMissionCoinsClaimed is bool &&
+             data.dailyMissionRuns is int && data.dailyMissionRuns >= 0 &&
+             data.dailyMissionRunsClaimed is bool &&
+             data.dailyMissionResetKey is string && data.dailyMissionResetKey.size() >= 1 && data.dailyMissionResetKey.size() <= 32 &&
+             data.weeklyMissionDistance is int && data.weeklyMissionDistance >= 0 &&
+             data.weeklyMissionDistanceClaimed is bool &&
+             data.weeklyMissionJumps is int && data.weeklyMissionJumps >= 0 &&
+             data.weeklyMissionJumpsClaimed is bool &&
+             data.weeklyMissionResetKey is string && data.weeklyMissionResetKey.size() >= 1 && data.weeklyMissionResetKey.size() <= 32 &&
+             data.totalJumps is int && data.totalJumps >= 0 &&
+             data.totalSlides is int && data.totalSlides >= 0;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasOnly(userProfileKeys()) &&
+             isValidUserCore(data, userId) &&
+             isValidUserLoadout(data) &&
+             isValidUserMissions(data);
+    }
+
+    function isValidLeaderboardEntry(data, userId) {
+      return data.uid == userId &&
+             isValidId(data.uid) &&
+             isValidString(data.displayName, 1, 30) &&
+             isValidString(data.displayNameLower, 1, 30) &&
+             data.level is int && data.level >= 1 && data.level <= 999 &&
+             data.bestScore is int && data.bestScore >= 0 &&
+             isValidString(data.equippedHeroId, 1, 64) &&
+             isValidString(data.equippedCompanionId, 1, 64) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFriendLink(data, friendUid) {
+      return data.friendUid == friendUid &&
+             isValidId(data.friendUid) &&
+             isValidString(data.displayName, 1, 30) &&
+             data.level is int && data.level >= 1 && data.level <= 999 &&
+             data.bestScore is int && data.bestScore >= 0 &&
+             isValidString(data.equippedHeroId, 1, 64) &&
+             isValidId(data.requestId) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidFriendRequest(data) {
+      return isValidId(data.fromUid) &&
+             isValidId(data.toUid) &&
+             data.fromUid != data.toUid &&
+             isValidString(data.fromDisplayName, 1, 30) &&
+             isValidString(data.toDisplayName, 1, 30) &&
+             data.fromLevel is int && data.fromLevel >= 1 && data.fromLevel <= 999 &&
+             data.participants is list &&
+             data.participants.size() == 2 &&
+             (data.fromUid in data.participants) &&
+             (data.toUid in data.participants) &&
+             data.status in ['pending', 'accepted', 'declined'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidInboxMessage(data) {
+      return isValidId(data.senderUid) &&
+             isValidString(data.senderName, 1, 30) &&
+             isValidString(data.title, 1, 80) &&
+             isValidString(data.body, 1, 240) &&
+             data.type in ['system', 'reward', 'friend_gift'] &&
+             data.rewardCoins is int && data.rewardCoins >= 0 && data.rewardCoins <= 2000 &&
+             data.rewardGems is int && data.rewardGems >= 0 && data.rewardGems <= 100 &&
+             data.read is bool &&
+             data.claimed is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().keys().size() >= 44 &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming(), userId) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'displayName', 'displayNameLower', 'photoUrl',
+                           'equippedHeroId', 'equippedCompanionId', 'updatedAt'
+                         ]) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'coins', 'gems', 'xp', 'xpToNextLevel', 'level',
+                           'activeMultiplier', 'multiplierExpiresAt',
+                           'equippedHeroId', 'equippedCompanionId',
+                           'unlockedHeroIds', 'unlockedCompanionIds', 'collectionIds',
+                           'inventoryMagnets', 'inventoryShields', 'inventoryMultipliers', 'inventoryHeadStarts',
+                           'nextFreeChestAt', 'updatedAt'
+                         ]) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'level', 'xp', 'xpToNextLevel', 'coins', 'gems',
+                           'bestScore', 'totalDistance', 'totalRuns', 'totalCoinsCollected',
+                           'activeMultiplier', 'multiplierExpiresAt',
+                           'inventoryMagnets', 'inventoryShields', 'inventoryMultipliers', 'inventoryHeadStarts',
+                           'collectionIds',
+                           'seasonLevel', 'seasonXp', 'claimedSeasonTiers',
+                           'eventSakuraTokens', 'claimedEventMilestones',
+                           'claimedAchievementIds',
+                           'dailyMissionCoins', 'dailyMissionCoinsClaimed',
+                           'dailyMissionRuns', 'dailyMissionRunsClaimed', 'dailyMissionResetKey',
+                           'weeklyMissionDistance', 'weeklyMissionDistanceClaimed',
+                           'weeklyMissionJumps', 'weeklyMissionJumpsClaimed', 'weeklyMissionResetKey',
+                           'totalJumps', 'totalSlides', 'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      match /friends/{friendUid} {
+        allow get: if isSignedIn() &&
+                      isValidId(userId) &&
+                      isValidId(friendUid) &&
+                      (request.auth.uid == userId || request.auth.uid == friendUid);
+
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(friendUid) &&
+                         userId != friendUid &&
+                         (request.auth.uid == userId || request.auth.uid == friendUid) &&
+                         incoming().keys().hasAll(['friendUid', 'displayName', 'level', 'bestScore', 'equippedHeroId', 'requestId', 'createdAt']) &&
+                         incoming().keys().hasOnly(['friendUid', 'displayName', 'level', 'bestScore', 'equippedHeroId', 'requestId', 'createdAt']) &&
+                         isValidFriendLink(incoming(), friendUid) &&
+                         getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.status == 'accepted' &&
+                         getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == request.auth.uid &&
+                         (
+                           (getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.fromUid == userId &&
+                            getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == friendUid) ||
+                           (getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.fromUid == friendUid &&
+                            getAfter(/databases/$(database)/documents/friendRequests/$(incoming().requestId)).data.toUid == userId)
+                         );
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(friendUid) &&
+                         (request.auth.uid == userId || request.auth.uid == friendUid);
+      }
+
+      match /inbox/{messageId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(messageId) && request.auth.uid == userId;
+
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         incoming().keys().hasAll(['senderUid', 'senderName', 'title', 'body', 'type', 'rewardCoins', 'rewardGems', 'read', 'claimed', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['senderUid', 'senderName', 'title', 'body', 'type', 'rewardCoins', 'rewardGems', 'read', 'claimed', 'createdAt', 'updatedAt']) &&
+                         isValidInboxMessage(incoming()) &&
+                         incoming().read == false &&
+                         incoming().claimed == false && (
+                           (request.auth.uid == userId && incoming().senderUid == userId) ||
+                           (request.auth.uid != userId &&
+                            incoming().senderUid == request.auth.uid &&
+                            incoming().type == 'friend_gift' &&
+                            incoming().rewardCoins <= 100 &&
+                            incoming().rewardGems == 0 &&
+                            isFriendOf(userId, request.auth.uid))
+                         );
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         request.auth.uid == userId &&
+                         isValidInboxMessage(incoming()) &&
+                         incoming().keys().hasOnly(['senderUid', 'senderName', 'title', 'body', 'type', 'rewardCoins', 'rewardGems', 'read', 'claimed', 'createdAt', 'updatedAt']) &&
+                         incoming().senderUid == existing().senderUid &&
+                         incoming().senderName == existing().senderName &&
+                         incoming().title == existing().title &&
+                         incoming().body == existing().body &&
+                         incoming().type == existing().type &&
+                         incoming().rewardCoins == existing().rewardCoins &&
+                         incoming().rewardGems == existing().rewardGems &&
+                         incoming().createdAt == existing().createdAt &&
+                         (!existing().claimed || incoming().claimed == true) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['read', 'claimed', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(messageId) && request.auth.uid == userId;
+      }
+    }
+
+    match /leaderboard/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+
+      // Non-PII public leaderboard: restrict page size to prevent scraping
+      allow list: if isSignedIn() && request.query.limit != null && request.query.limit <= 50;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().keys().hasAll(['uid', 'displayName', 'displayNameLower', 'level', 'bestScore', 'equippedHeroId', 'equippedCompanionId', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['uid', 'displayName', 'displayNameLower', 'level', 'bestScore', 'equippedHeroId', 'equippedCompanionId', 'updatedAt']) &&
+                       isValidLeaderboardEntry(incoming(), userId);
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidLeaderboardEntry(incoming(), userId) &&
+                       incoming().keys().hasOnly(['uid', 'displayName', 'displayNameLower', 'level', 'bestScore', 'equippedHeroId', 'equippedCompanionId', 'updatedAt']) &&
+                       incoming().uid == existing().uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName', 'displayNameLower', 'level', 'bestScore',
+                         'equippedHeroId', 'equippedCompanionId', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    match /friendRequests/{requestId} {
+      allow get: if isSignedIn() &&
+                    isValidId(requestId) &&
+                    (request.auth.uid == existing().fromUid || request.auth.uid == existing().toUid);
+
+      allow list: if isSignedIn() && (request.auth.uid in existing().participants);
+
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().keys().hasAll(['fromUid', 'fromDisplayName', 'fromLevel', 'toUid', 'toDisplayName', 'participants', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['fromUid', 'fromDisplayName', 'fromLevel', 'toUid', 'toDisplayName', 'participants', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidFriendRequest(incoming()) &&
+                       incoming().fromUid == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       exists(/databases/$(database)/documents/leaderboard/$(incoming().toUid));
+
+      allow update: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       isValidFriendRequest(incoming()) &&
+                       existing().status == 'pending' &&
+                       incoming().status in ['accepted', 'declined'] &&
+                       request.auth.uid == existing().toUid &&
+                       incoming().fromUid == existing().fromUid &&
+                       incoming().toUid == existing().toUid &&
+                       incoming().participants == existing().participants &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       (request.auth.uid == existing().fromUid || request.auth.uid == existing().toUid);
+    }
+  }
+}
