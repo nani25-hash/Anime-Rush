@@ -33,7 +33,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             <button
               key={q}
               type="button"
-              className={`quality-btn ${quality === q ? 'active' : ''}`}
+              className={`quality-btn quality-${q} ${quality === q ? 'active' : ''}`}
               onClick={() => onQualityChange(q)}
             >
               {QUALITY_PRESETS[q].label}
@@ -49,7 +49,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 
           <button type="button" className="secondary-btn" onClick={onRestart}>
             <RestartIcon size={18} />
-            <span>RESTART</span>
+            <span>REJOUER</span>
           </button>
 
           <button type="button" className="secondary-btn" onClick={onToggleMute}>
