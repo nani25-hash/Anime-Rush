@@ -154,6 +154,7 @@ export interface GameProfileActions {
   signOut: () => void;
   clearChestReward: () => void;
   clearToast: () => void;
+  showToast: (message: string) => void;
   toggleBoost: (key: keyof ActiveRunBoosts) => void;
   consumeBoostFlagsAfterRun: () => void;
 }
@@ -393,6 +394,7 @@ export function useGameProfile(): {
 
   const clearChestReward = useCallback(() => setChestReward(null), []);
   const clearToast = useCallback(() => setToastMessage(null), []);
+  const showToast = useCallback((message: string) => setToastMessage(message), []);
 
   const toggleBoost = useCallback(
     (key: keyof ActiveRunBoosts) => {
@@ -454,6 +456,7 @@ export function useGameProfile(): {
       signOut,
       clearChestReward,
       clearToast,
+      showToast,
       toggleBoost,
       consumeBoostFlagsAfterRun,
     },

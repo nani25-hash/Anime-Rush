@@ -354,7 +354,9 @@ export class AnimeRushEngine {
 
     this.pursuerGroup.visible = false;
     this.runner.root.position.set(0, 0, 0);
+    this.runner.root.rotation.y = 0;
     this.shiba.reset(0, 0);
+    this.shiba.root.rotation.y = 0;
     this.environment.reset();
     this.pools.reset();
   }
@@ -433,21 +435,23 @@ export class AnimeRushEngine {
     }
 
     if (this.phase === 'TITLE') {
-      // Energetic live center-stage showcase: Hero & Shiba running down Tokyo Sakura railway toward Mount Fuji!
-      const lobbySpeed = 11.8;
+      // Energetic live center-stage showcase: full-body Hero & Shiba clearly centered between Logo & JOUER!
+      const lobbySpeed = 11.4;
       this.lobbyScrollZ -= lobbySpeed * dt;
       this.environment.update(dt, this.lobbyScrollZ, lobbySpeed);
-      this.runner.root.position.set(-0.28, 0, this.lobbyScrollZ);
+      this.runner.root.position.set(-0.36, 0, this.lobbyScrollZ);
+      this.runner.root.rotation.y = -0.18;
       this.runner.update(dt, 'TITLE', lobbySpeed, 0, 0);
-      this.shiba.update(dt, 'TITLE', lobbySpeed, -0.28, 0, this.lobbyScrollZ);
+      this.shiba.root.rotation.y = -0.14;
+      this.shiba.update(dt, 'TITLE', lobbySpeed, -0.36, 0, this.lobbyScrollZ);
 
       const t = performance.now() * 0.00055;
       this.camera.position.set(
-        1.15 + Math.sin(t) * 0.28,
-        1.78 + Math.cos(t * 0.8) * 0.08,
-        this.lobbyScrollZ + 3.75,
+        0.55 + Math.sin(t) * 0.22,
+        2.02 + Math.cos(t * 0.8) * 0.06,
+        this.lobbyScrollZ + 5.75,
       );
-      this.camera.lookAt(0.15, 1.35, this.lobbyScrollZ - 18);
+      this.camera.lookAt(0.08, 1.42, this.lobbyScrollZ - 20);
       this.keyLight.position.set(9, 18, this.lobbyScrollZ + 12);
       this.keyLight.target.position.set(0, 0, this.lobbyScrollZ - 8);
       return;

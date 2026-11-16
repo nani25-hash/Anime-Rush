@@ -6,7 +6,7 @@ export type LaneIndex = -1 | 0 | 1;
 
 export type ObstacleKind = 'LOW_BARRIER' | 'HIGH_BEAM' | 'FULL_PILLAR' | 'MOVING_CART';
 
-export type BottomTab = 'home' | 'heroes' | 'play' | 'shop' | 'pass';
+export type BottomTab = 'home' | 'heroes' | 'shop' | 'pass';
 
 export type ActiveModal =
   | null

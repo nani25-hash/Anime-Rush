@@ -180,6 +180,14 @@ export const SakuraIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
   </svg>
 );
 
+export const MissionsIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="4" y="4" width="16" height="16" rx="3" fill="#0F172A" stroke="#FACC15" strokeWidth="1.6" />
+    <path d="M8 10l2.2 2.2L15.8 7" stroke="#4ADE80" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="8" y1="15.5" x2="16" y2="15.5" stroke="#7DD3FC" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
 export const GateGoalIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M3 5h18v3H3z" fill="#E2E8F0" />

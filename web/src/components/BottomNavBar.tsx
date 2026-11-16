@@ -1,15 +1,17 @@
 import React from 'react';
 import { BottomTab } from '../types/game';
-import { CartIcon, HeroIcon, HomeIcon, PassIcon, RunnerIcon } from './Icons';
+import { CartIcon, HeroIcon, HomeIcon, PassIcon } from './Icons';
 
 interface BottomNavBarProps {
   activeTab: BottomTab;
+  heroesBadge: boolean;
   passBadge: boolean;
   onSelectTab: (tab: BottomTab) => void;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
+  heroesBadge,
   passBadge,
   onSelectTab,
 }) => {
@@ -31,21 +33,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
         onClick={() => onSelectTab('heroes')}
         data-testid="nav-heroes"
       >
-        <HeroIcon size={21} />
-        <span>PERSONNAGES</span>
-      </button>
-
-      <button
-        type="button"
-        className="bottom-nav-play"
-        onClick={() => onSelectTab('play')}
-        data-testid="nav-play"
-        aria-label="Jouer"
-      >
-        <div className="bottom-nav-play-inner">
-          <RunnerIcon size={24} />
+        <div className="nav-icon-wrap">
+          <HeroIcon size={21} />
+          {heroesBadge && <span className="notif-dot">!</span>}
         </div>
-        <span>JOUER</span>
+        <span>PERSONNAGES</span>
       </button>
 
       <button

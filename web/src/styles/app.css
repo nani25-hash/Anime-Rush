@@ -188,33 +188,18 @@ body,
   align-items: center;
   gap: 5px;
   height: 34px;
-  padding: 0 4px 0 7px;
+  padding: 0 10px;
   border-radius: 999px;
   background: rgba(12, 18, 40, 0.92);
   border: 1.5px solid rgba(250, 204, 21, 0.6);
   color: #fef9c3;
   font-size: 12px;
   font-weight: 900;
-  cursor: pointer;
 }
 
 .currency-gems {
   border-color: rgba(192, 132, 252, 0.65);
   color: #f3e8ff;
-}
-
-.currency-plus {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
 }
 
 .topbar-menu-btn {
@@ -249,7 +234,7 @@ body,
 }
 
 .lobby-logo-wrap {
-  width: min(60vw, 240px);
+  width: min(56vw, 224px);
 }
 
 .lobby-logo-svg {
@@ -258,37 +243,22 @@ body,
   filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.72));
 }
 
-.lobby-quote-sticker {
-  position: absolute;
-  right: 4px;
-  top: 2px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 9px;
-  font-weight: 900;
-  font-style: italic;
-  line-height: 1.15;
-  color: rgba(248, 250, 252, 0.86);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
-}
-
 /* Middle 3-column Rail Grid */
 .lobby-middle-grid {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   min-height: 0;
-  margin: 2px 0;
+  padding-top: 8px;
 }
 
 .lobby-rail-left {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  width: 68px;
+  gap: 8px;
+  width: 70px;
   flex-shrink: 0;
 }
 
@@ -296,16 +266,16 @@ body,
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
-  width: 118px;
+  gap: 8px;
+  width: 132px;
   flex-shrink: 0;
 }
 
-.social-tiles-stack {
+.social-tiles-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 6px;
-  width: 72px;
+  width: 100%;
 }
 
 .side-tile {
@@ -316,17 +286,27 @@ body,
   justify-content: center;
   gap: 3px;
   width: 100%;
-  min-height: 52px;
-  padding: 5px 3px;
-  border-radius: 11px;
+  min-height: 54px;
+  padding: 5px 4px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(24, 36, 72, 0.88) 0%, rgba(12, 18, 38, 0.92) 100%);
   border: 1.5px solid rgba(56, 189, 248, 0.48);
   color: #f8fafc;
   font-size: 9px;
   font-weight: 900;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.side-tile.compact-tile {
+  min-height: 50px;
+  font-size: 8px;
+}
+
+.side-tile.tile-armed {
+  border-color: #facc15;
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.35);
 }
 
 .side-tile:active {
@@ -351,7 +331,8 @@ body,
   justify-content: center;
 }
 
-.tile-count-badge {
+.tile-count-badge,
+.tile-armed-badge {
   position: absolute;
   top: -5px;
   right: -5px;
@@ -362,6 +343,12 @@ body,
   color: #ffffff;
   font-size: 9px;
   font-weight: 900;
+}
+
+.tile-armed-badge {
+  background: #ca8a04;
+  border-color: #fef08a;
+  color: #ffffff;
 }
 
 /* Season & Event Banners */
@@ -451,70 +438,22 @@ body,
 .center-stage-trigger {
   flex: 1;
   height: 100%;
-  min-height: 180px;
+  min-height: 220px;
   border: none;
   background: transparent;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 10px;
   cursor: pointer;
-}
-
-.center-stage-hint {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(12, 18, 40, 0.72);
-  border: 1px solid rgba(250, 204, 21, 0.45);
-  color: #fef08a;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
 }
 
 /* Lower Lobby Dock */
 .lobby-lower-dock {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-}
-
-.boost-toggle-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-}
-
-.boost-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: rgba(15, 23, 46, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
-  font-size: 10px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.boost-pill:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.boost-pill.active {
-  background: linear-gradient(180deg, #0284c7, #1d4ed8);
-  border-color: #fde047;
-  color: #ffffff;
+  padding-bottom: 4px;
 }
 
 .lobby-cta-row {
   display: grid;
-  grid-template-columns: 92px 1fr 112px;
+  grid-template-columns: 92px 1fr 114px;
   align-items: stretch;
   gap: 8px;
 }
@@ -552,6 +491,7 @@ body,
 }
 
 .lobby-jouer-cta {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -573,6 +513,16 @@ body,
 
 .lobby-jouer-cta:active {
   transform: scale(0.96);
+}
+
+.jouer-boost-pill {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #0284c7;
+  border: 1.5px solid #bae6fd;
+  font-size: 11px;
+  font-weight: 900;
+  text-shadow: none;
 }
 
 .lobby-stats-col {
@@ -729,13 +679,13 @@ body,
   background: linear-gradient(90deg, #0284c7, #38bdf8);
 }
 
-/* Bottom 5-Tab Bar */
+/* Bottom 4-Tab Bar */
 .bottom-nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  align-items: flex-end;
-  gap: 2px;
-  padding: 6px 6px 8px;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 8px;
   background: linear-gradient(180deg, rgba(12, 18, 42, 0.94) 0%, #070b1a 100%);
   border-top: 2px solid rgba(56, 189, 248, 0.5);
 }
@@ -747,40 +697,24 @@ body,
   align-items: center;
   justify-content: center;
   gap: 3px;
-  min-height: 46px;
+  min-height: 48px;
   border: none;
+  border-radius: 10px;
   background: transparent;
   color: #94a3b8;
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 900;
   cursor: pointer;
 }
 
 .bottom-nav-item.active {
   color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
 }
 
 .nav-icon-wrap {
   position: relative;
   display: inline-flex;
-}
-
-.bottom-nav-play {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  margin-top: -16px;
-  padding: 5px 4px;
-  border-radius: 13px;
-  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
-  border: 2px solid #fef08a;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: 0 5px 14px rgba(245, 158, 11, 0.5);
 }
 
 /* Modal Sheets */

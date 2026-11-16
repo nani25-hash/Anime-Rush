@@ -13,6 +13,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShopModal } from './components/ShopModal';
 import { SocialHubModal } from './components/SocialHubModal';
 import { TopBar } from './components/TopBar';
+import { HERO_CATALOG } from './config/catalog';
 import { AnimeRushEngine } from './game/AnimeRushEngine';
 import { useGameProfile } from './state/useGameProfile';
 import {
@@ -221,23 +222,18 @@ export const App: React.FC = () => {
     setActiveModal(modal);
   }, []);
 
-  const handleSelectBottomTab = useCallback(
-    (tab: BottomTab) => {
-      engineRef.current?.playUiSound();
-      if (tab === 'home') {
-        setActiveModal(null);
-      } else if (tab === 'heroes') {
-        setActiveModal('heroes');
-      } else if (tab === 'shop') {
-        setActiveModal('shop');
-      } else if (tab === 'pass') {
-        setActiveModal('pass');
-      } else if (tab === 'play') {
-        handlePlay();
-      }
-    },
-    [handlePlay],
-  );
+  const handleSelectBottomTab = useCallback((tab: BottomTab) => {
+    engineRef.current?.playUiSound();
+    if (tab === 'home') {
+      setActiveModal(null);
+    } else if (tab === 'heroes') {
+      setActiveModal('heroes');
+    } else if (tab === 'shop') {
+      setActiveModal('shop');
+    } else if (tab === 'pass') {
+      setActiveModal('pass');
+    }
+  }, []);
 
   const activeBottomTab: BottomTab = useMemo(() => {
     if (activeModal === 'heroes') return 'heroes';
@@ -252,6 +248,16 @@ export const App: React.FC = () => {
     }
     return false;
   }, [profile.seasonLevel, profile.claimedSeasonTiers]);
+
+  const canAffordNewHero = useMemo(
+    () =>
+      HERO_CATALOG.some(
+        (h) =>
+          !profile.unlockedHeroIds.includes(h.id) &&
+          (h.currency === 'coins' ? profile.coins >= h.cost : profile.gems >= h.cost),
+      ),
+    [profile.coins, profile.gems, profile.unlockedHeroIds],
+  );
 
   return (
     <main className="app-shell">
@@ -271,7 +277,6 @@ export const App: React.FC = () => {
           <TopBar
             profile={profile}
             onOpenSettings={() => handleOpenModal('settings')}
-            onOpenShop={() => handleOpenModal('shop')}
           />
 
           <LobbyOverlay
@@ -279,14 +284,14 @@ export const App: React.FC = () => {
             social={social}
             selectedBoosts={selectedBoosts}
             onStartRun={handlePlay}
-            onToggleBoost={actions.toggleBoost}
             onClaimFreeChest={actions.claimFreeChest}
-            onClaimMission={actions.claimMission}
+            onShowToast={actions.showToast}
             onOpenModal={handleOpenModal}
           />
 
           <BottomNavBar
             activeTab={activeBottomTab}
+            heroesBadge={canAffordNewHero}
             passBadge={hasClaimablePassTier}
             onSelectTab={handleSelectBottomTab}
           />

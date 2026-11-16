@@ -128,6 +128,10 @@ export const InventoryAndCollectionModal: React.FC<InventoryModalProps> = ({
                 </button>
               </div>
 
+              <p className="shop-desc" style={{ textAlign: 'center', marginTop: 4 }}>
+                Les bonus marqués <strong>PRÊT</strong> s’activent dès que vous appuyez sur <strong>JOUER</strong>.
+              </p>
+
               <button type="button" className="secondary-btn" onClick={onOpenShop}>
                 ACHETER PLUS DE BOOSTS EN BOUTIQUE
               </button>

@@ -179,9 +179,9 @@ export class EnvironmentBuilder {
     const blossomGeo = new THREE.IcosahedronGeometry(1.45, 1);
 
     // Railway Catenary Gantry Geometries
-    const gantryPostGeo = new THREE.BoxGeometry(0.32, 7.2, 0.32);
-    const gantryBeamGeo = new THREE.BoxGeometry(10.2, 0.38, 0.42);
-    const wireGeo = new THREE.CylinderGeometry(0.03, 0.03, GAME_CONSTANTS.SEGMENT_LENGTH, 6);
+    const gantryPostGeo = new THREE.BoxGeometry(0.28, 8.0, 0.28);
+    const gantryBeamGeo = new THREE.BoxGeometry(10.2, 0.3, 0.34);
+    const wireGeo = new THREE.CylinderGeometry(0.028, 0.028, GAME_CONSTANTS.SEGMENT_LENGTH, 6);
 
     // Vermilion Torii Gate Geometries
     const toriiBaseGeo = new THREE.CylinderGeometry(0.46, 0.52, 0.65, 10);
@@ -316,17 +316,17 @@ export class EnvironmentBuilder {
       gantry.position.set(0, 0, 0);
       const postX = GAME_CONSTANTS.ROAD_WIDTH * 0.5 + 0.65;
       const postL = new THREE.Mesh(gantryPostGeo, steelGantryMat);
-      postL.position.set(-postX, 3.6, 0);
+      postL.position.set(-postX, 4.0, 0);
       const postR = new THREE.Mesh(gantryPostGeo, steelGantryMat);
-      postR.position.set(postX, 3.6, 0);
+      postR.position.set(postX, 4.0, 0);
       const crossBeam = new THREE.Mesh(gantryBeamGeo, steelGantryMat);
-      crossBeam.position.set(0, 6.9, 0);
+      crossBeam.position.set(0, 7.75, 0);
       gantry.add(postL, postR, crossBeam);
 
       for (const laneOffset of [-GAME_CONSTANTS.LANE_WIDTH, 0, GAME_CONSTANTS.LANE_WIDTH]) {
         const wire = new THREE.Mesh(wireGeo, steelGantryMat);
         wire.rotation.x = Math.PI / 2;
-        wire.position.set(laneOffset, 6.55, 0);
+        wire.position.set(laneOffset, 7.45, 0);
         gantry.add(wire);
       }
       seg.add(gantry);
@@ -426,7 +426,7 @@ export class EnvironmentBuilder {
     const haloMat = new THREE.MeshBasicMaterial({
       map: glowTex,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.42,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
@@ -437,20 +437,20 @@ export class EnvironmentBuilder {
     this.backdropGroup.add(fujiGlow);
 
     // Iconic 3D Snow-Capped Mount Fuji centered down the railway horizon!
-    const fujiBaseGeo = new THREE.ConeGeometry(62, 36, 32, 1, false);
-    const fujiBaseMat = new THREE.MeshBasicMaterial({ color: 0x3b4986, fog: false });
-    const fujiSnowGeo = new THREE.ConeGeometry(22.5, 13.4, 24, 1, false);
+    const fujiBaseGeo = new THREE.ConeGeometry(64, 38, 32, 1, false);
+    const fujiBaseMat = new THREE.MeshBasicMaterial({ color: 0x26326b, fog: false });
+    const fujiSnowGeo = new THREE.ConeGeometry(23.5, 14.0, 24, 1, false);
     const fujiSnowMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, fog: false });
     this.sharedDisposables.push(fujiBaseGeo, fujiBaseMat, fujiSnowGeo, fujiSnowMat);
 
     const fuji = new THREE.Group();
     fuji.position.set(0, 0, -148);
     const mountainBody = new THREE.Mesh(fujiBaseGeo, fujiBaseMat);
-    mountainBody.position.y = 18;
+    mountainBody.position.y = 19;
     mountainBody.scale.set(1.25, 1.0, 0.75);
 
     const snowCap = new THREE.Mesh(fujiSnowGeo, fujiSnowMat);
-    snowCap.position.set(0, 29.5, 0.4);
+    snowCap.position.set(0, 31.0, 0.4);
     snowCap.scale.set(1.25, 1.0, 0.75);
     fuji.add(mountainBody, snowCap);
     this.backdropGroup.add(fuji);
