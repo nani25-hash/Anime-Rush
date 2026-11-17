@@ -9,7 +9,6 @@ interface SettingsModalProps {
   onSaveDisplayName: (name: string) => void;
   onQualityChange: (q: QualityLevel) => void;
   onToggleMute: () => void;
-  onSignOut: () => void;
   onClose: () => void;
 }
 
@@ -22,7 +21,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaveDisplayName,
   onQualityChange,
   onToggleMute,
-  onSignOut,
   onClose,
 }) => {
   const [nameInput, setNameInput] = useState(profile.displayName);
@@ -98,9 +96,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
             </div>
 
-            <button type="button" className="danger-btn" onClick={onSignOut} data-testid="sign-out-btn">
-              DÉCONNEXION GOOGLE
-            </button>
+            <div className="subsection-block">
+              <span className="subsection-title">SAUVEGARDE LOCALE</span>
+              <p className="shop-desc">
+                Votre progression, vos héros et vos records sont enregistrés localement sur cet
+                appareil. La sauvegarde Google est désactivée pour le moment.
+              </p>
+            </div>
           </div>
         </div>
       </div>

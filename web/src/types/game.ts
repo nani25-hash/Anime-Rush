@@ -182,7 +182,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 512,
     petalCount: 60,
     fogDensity: 0.0115,
-    farPlane: 185,
+    farPlane: 230,
   },
   medium: {
     label: 'Moyenne',
@@ -191,7 +191,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 1024,
     petalCount: 150,
     fogDensity: 0.0088,
-    farPlane: 195,
+    farPlane: 245,
   },
   high: {
     label: 'Haute',
@@ -200,7 +200,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 2048,
     petalCount: 240,
     fogDensity: 0.0072,
-    farPlane: 225,
+    farPlane: 275,
   },
 };
 

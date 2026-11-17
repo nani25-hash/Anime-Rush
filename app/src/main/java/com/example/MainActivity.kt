@@ -43,7 +43,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,39 +62,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.credentials.CredentialManager
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
-import com.example.data.model.FriendRequest
-import com.example.data.model.LeaderboardEntry
+import com.example.data.local.LocalGameRepository
 import com.example.data.model.PlayerProfile
-import com.example.data.repository.PlayerRepository
-import com.example.data.repository.SocialRepository
-import com.example.ui.auth.AuthScreen
-import com.example.ui.auth.signOutGoogle
-import com.google.firebase.Firebase
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.auth
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-
-private fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
-  val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-    trySend(firebaseAuth.currentUser)
-  }
-  addAuthStateListener(listener)
-  awaitClose { removeAuthStateListener(listener) }
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -103,8 +80,7 @@ class MainActivity : ComponentActivity() {
   private val isGameReadyState = mutableStateOf(false)
   @Volatile private var latestProfileCache: PlayerProfile? = null
 
-  private lateinit var playerRepository: PlayerRepository
-  private lateinit var socialRepository: SocialRepository
+  private lateinit var localGameRepository: LocalGameRepository
 
   private fun emitToWeb(eventType: String, payload: JSONObject) {
     val webView = webViewRef ?: return
@@ -134,21 +110,13 @@ class MainActivity : ComponentActivity() {
   }
 
   private suspend fun refreshSocialBundle() {
-    val friendsRes = socialRepository.listFriends()
-    val reqsRes = socialRepository.listFriendRequests()
-    val inboxRes = socialRepository.listInbox()
-    val lbRes = socialRepository.fetchLeaderboard(30L)
+    val inboxRes = localGameRepository.listInbox()
+    val lbRes = localGameRepository.fetchLocalLeaderboard()
 
     val payload =
       JSONObject().apply {
-        put(
-          "friends",
-          JSONArray(friendsRes.getOrDefault(emptyList()).map { it.toJsonObject() }),
-        )
-        put(
-          "friendRequests",
-          JSONArray(reqsRes.getOrDefault(emptyList()).map { it.toJsonObject() }),
-        )
+        put("friends", JSONArray())
+        put("friendRequests", JSONArray())
         put(
           "inbox",
           JSONArray(inboxRes.getOrDefault(emptyList()).map { it.toJsonObject() }),
@@ -172,7 +140,7 @@ class MainActivity : ComponentActivity() {
       runOnUiThread { isGameReadyState.value = true }
       lifecycleScope.launch(Dispatchers.IO) {
         latestProfileCache?.let { syncProfileToWeb(it) }
-          ?: playerRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
+          ?: localGameRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
         refreshSocialBundle()
       }
     }
@@ -180,7 +148,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun requestSyncAll() {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .getCurrentProfile()
           .onSuccess { syncProfileToWeb(it) }
           .onFailure { emitError("requestSyncAll", it) }
@@ -191,7 +159,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun updateDisplayName(newName: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .updateDisplayName(newName)
           .onSuccess {
             syncProfileToWeb(it)
@@ -205,9 +173,12 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun equipLoadout(heroId: String, companionId: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .equipLoadout(heroId, companionId)
-          .onSuccess { syncProfileToWeb(it) }
+          .onSuccess {
+            syncProfileToWeb(it)
+            refreshSocialBundle()
+          }
           .onFailure { emitError("equipLoadout", it) }
       }
     }
@@ -215,7 +186,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimFreeChest() {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .claimFreeChest()
           .onSuccess { reward ->
             emitToWeb(
@@ -227,7 +198,10 @@ class MainActivity : ComponentActivity() {
                 put("nextFreeChestAt", reward.nextFreeChestAt)
               },
             )
-            playerRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
+            localGameRepository.getCurrentProfile().onSuccess {
+              syncProfileToWeb(it)
+              refreshSocialBundle()
+            }
           }
           .onFailure { emitError("claimFreeChest", it) }
       }
@@ -247,7 +221,7 @@ class MainActivity : ComponentActivity() {
       consumedHeadStart: Boolean,
     ) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .recordRunResult(
             score = score,
             distance = distance,
@@ -271,10 +245,11 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun purchaseShopItem(itemType: String, itemId: String, currency: String, cost: Long) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .purchaseShopItem(itemType, itemId, currency, cost)
           .onSuccess {
             syncProfileToWeb(it)
+            refreshSocialBundle()
             emitToWeb(
               "purchaseSuccess",
               JSONObject().apply {
@@ -290,7 +265,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun activateMultiplierBoost() {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .activateMultiplierBoost()
           .onSuccess {
             syncProfileToWeb(it)
@@ -303,7 +278,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimMission(missionId: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .claimMission(missionId)
           .onSuccess {
             syncProfileToWeb(it)
@@ -316,7 +291,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimSeasonTier(tier: Long) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .claimSeasonTier(tier)
           .onSuccess {
             syncProfileToWeb(it)
@@ -329,7 +304,7 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimEventMilestone(milestoneId: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .claimEventMilestone(milestoneId)
           .onSuccess {
             syncProfileToWeb(it)
@@ -342,10 +317,11 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimAchievement(achievementId: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        playerRepository
+        localGameRepository
           .claimAchievement(achievementId)
           .onSuccess {
             syncProfileToWeb(it)
+            refreshSocialBundle()
             emitToWeb("toast", JSONObject().apply { put("message", "Succès débloqué et réclamé !") })
           }
           .onFailure { emitError("claimAchievement", it) }
@@ -355,8 +331,8 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun fetchLeaderboard() {
       lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
-          .fetchLeaderboard(30L)
+        localGameRepository
+          .fetchLocalLeaderboard()
           .onSuccess { list ->
             emitToWeb(
               "leaderboard",
@@ -369,17 +345,7 @@ class MainActivity : ComponentActivity() {
 
     @JavascriptInterface
     fun searchPlayers(query: String) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
-          .searchPlayers(query)
-          .onSuccess { list ->
-            emitToWeb(
-              "playerSearch",
-              JSONObject().apply { put("entries", JSONArray(list.map { it.toJsonObject() })) },
-            )
-          }
-          .onFailure { emitError("searchPlayers", it) }
-      }
+      emitToWeb("playerSearch", JSONObject().apply { put("entries", JSONArray()) })
     }
 
     @JavascriptInterface
@@ -391,29 +357,10 @@ class MainActivity : ComponentActivity() {
       targetHeroId: String,
       targetCompanionId: String,
     ) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        val myProfile = latestProfileCache ?: playerRepository.getCurrentProfile().getOrNull()
-        if (myProfile == null) {
-          emitError("sendFriendRequest", IllegalStateException("Profil non chargé"))
-          return@launch
-        }
-        val target =
-          LeaderboardEntry(
-            uid = targetUid,
-            displayName = targetDisplayName,
-            level = targetLevel,
-            bestScore = targetBestScore,
-            equippedHeroId = targetHeroId,
-            equippedCompanionId = targetCompanionId,
-          )
-        socialRepository
-          .sendFriendRequest(target, myProfile)
-          .onSuccess {
-            refreshSocialBundle()
-            emitToWeb("toast", JSONObject().apply { put("message", "Demande d'ami envoyée !") })
-          }
-          .onFailure { emitError("sendFriendRequest", it) }
-      }
+      emitToWeb(
+        "toast",
+        JSONObject().apply { put("message", "Mode local actif : amis désactivés pour le moment.") },
+      )
     }
 
     @JavascriptInterface
@@ -422,73 +369,24 @@ class MainActivity : ComponentActivity() {
       fromUid: String,
       fromDisplayName: String,
       fromLevel: Long,
-    ) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        val myProfile = latestProfileCache ?: playerRepository.getCurrentProfile().getOrNull()
-        if (myProfile == null) {
-          emitError("acceptFriendRequest", IllegalStateException("Profil non chargé"))
-          return@launch
-        }
-        val req =
-          FriendRequest(
-            id = requestId,
-            fromUid = fromUid,
-            fromDisplayName = fromDisplayName,
-            fromLevel = fromLevel,
-            toUid = myProfile.uid,
-            toDisplayName = myProfile.displayName,
-            status = "pending",
-          )
-        socialRepository
-          .acceptFriendRequest(req, myProfile)
-          .onSuccess {
-            refreshSocialBundle()
-            emitToWeb("toast", JSONObject().apply { put("message", "Nouvel ami ajouté !") })
-          }
-          .onFailure { emitError("acceptFriendRequest", it) }
-      }
-    }
+    ) {}
 
     @JavascriptInterface
-    fun declineFriendRequest(requestId: String) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
-          .declineFriendRequest(requestId)
-          .onSuccess { refreshSocialBundle() }
-          .onFailure { emitError("declineFriendRequest", it) }
-      }
-    }
+    fun declineFriendRequest(requestId: String) {}
 
     @JavascriptInterface
-    fun removeFriend(friendUid: String) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
-          .removeFriend(friendUid)
-          .onSuccess { refreshSocialBundle() }
-          .onFailure { emitError("removeFriend", it) }
-      }
-    }
+    fun removeFriend(friendUid: String) {}
 
     @JavascriptInterface
-    fun sendFriendGift(friendUid: String) {
-      lifecycleScope.launch(Dispatchers.IO) {
-        val myName = latestProfileCache?.displayName ?: "Ninja"
-        socialRepository
-          .sendFriendGift(friendUid, myName)
-          .onSuccess {
-            emitToWeb("toast", JSONObject().apply { put("message", "Cadeau envoyé (50 pièces) !") })
-          }
-          .onFailure { emitError("sendFriendGift", it) }
-      }
-    }
+    fun sendFriendGift(friendUid: String) {}
 
     @JavascriptInterface
     fun claimInboxMessage(messageId: String) {
       lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
+        localGameRepository
           .claimInboxMessage(messageId)
           .onSuccess {
-            playerRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
+            localGameRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
             refreshSocialBundle()
             emitToWeb("toast", JSONObject().apply { put("message", "Récompense réclamée !") })
           }
@@ -499,10 +397,10 @@ class MainActivity : ComponentActivity() {
     @JavascriptInterface
     fun claimAllInbox() {
       lifecycleScope.launch(Dispatchers.IO) {
-        socialRepository
+        localGameRepository
           .claimAllInbox()
           .onSuccess { count ->
-            playerRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
+            localGameRepository.getCurrentProfile().onSuccess { syncProfileToWeb(it) }
             refreshSocialBundle()
             if (count > 0) {
               emitToWeb(
@@ -517,21 +415,16 @@ class MainActivity : ComponentActivity() {
 
     @JavascriptInterface
     fun signOut() {
-      runOnUiThread {
-        val cm = CredentialManager.create(this@MainActivity)
-        webViewRef?.destroy()
-        webViewRef = null
-        latestProfileCache = null
-        isGameReadyState.value = false
-        signOutGoogle(cm, lifecycleScope)
-      }
+      emitToWeb(
+        "toast",
+        JSONObject().apply { put("message", "Sauvegarde locale active sur cet appareil.") },
+      )
     }
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    playerRepository = PlayerRepository(applicationContext)
-    socialRepository = SocialRepository(applicationContext)
+    localGameRepository = LocalGameRepository(applicationContext)
 
     enableEdgeToEdge(
       statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -545,30 +438,17 @@ class MainActivity : ComponentActivity() {
     insetsController.hide(WindowInsetsCompat.Type.systemBars())
 
     setContent {
-      val currentUser by
-        remember { Firebase.auth.authStateFlow() }
-          .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
-
-      val user = currentUser
-      if (user == null) {
-        AuthScreen(onAuthSuccess = {})
-      } else {
-        key(user.uid) {
-          AuthenticatedGameShell(
-            currentUser = user,
-            playerRepository = playerRepository,
-            onProfileSynced = { syncProfileToWeb(it) },
-            onRefreshSocial = { refreshSocialBundle() },
-          )
-        }
-      }
+      LocalGameShell(
+        localGameRepository = localGameRepository,
+        onProfileSynced = { syncProfileToWeb(it) },
+        onRefreshSocial = { refreshSocialBundle() },
+      )
     }
   }
 
   @Composable
-  private fun AuthenticatedGameShell(
-    currentUser: FirebaseUser,
-    playerRepository: PlayerRepository,
+  private fun LocalGameShell(
+    localGameRepository: LocalGameRepository,
     onProfileSynced: (PlayerProfile) -> Unit,
     onRefreshSocial: suspend () -> Unit,
   ) {
@@ -579,15 +459,15 @@ class MainActivity : ComponentActivity() {
     val gameReady by isGameReadyState
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(currentUser.uid) {
-      playerRepository
-        .ensurePlayerInitialized(currentUser.displayName, currentUser.photoUrl?.toString())
+    LaunchedEffect(Unit) {
+      localGameRepository
+        .ensurePlayerInitialized()
         .onSuccess { profile ->
           onProfileSynced(profile)
           onRefreshSocial()
         }
 
-      playerRepository
+      localGameRepository
         .observeProfile()
         .catch { err -> Log.w("AnimeRushProfile", "Profile stream closed: ${err.message}") }
         .collect { profile ->
@@ -615,7 +495,7 @@ class MainActivity : ComponentActivity() {
       }
     }
 
-    DisposableEffect(currentUser.uid) {
+    DisposableEffect(Unit) {
       onDispose {
         webViewRef?.destroy()
         webViewRef = null

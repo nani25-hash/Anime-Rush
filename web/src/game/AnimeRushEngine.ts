@@ -131,7 +131,7 @@ export class AnimeRushEngine {
 
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
-    this.camera = new THREE.PerspectiveCamera(58, width / height, 0.2, 230);
+    this.camera = new THREE.PerspectiveCamera(58, width / height, 0.2, 245);
     this.camera.position.set(1.65, 1.85, 3.6);
     this.camera.lookAt(0.25, 1.35, -18);
 

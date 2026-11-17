@@ -10,7 +10,6 @@ import {
   AchievementIcon,
   ChestIcon,
   CollectionIcon,
-  FriendsIcon,
   InventoryIcon,
   MailIcon,
   MissionsIcon,
@@ -67,10 +66,6 @@ export const LobbyOverlay: React.FC<LobbyOverlayProps> = ({
   const unreadInboxCount = useMemo(
     () => social.inbox.filter((m) => !m.claimed || !m.read).length,
     [social.inbox],
-  );
-  const incomingFriendRequestsCount = useMemo(
-    () => social.friendRequests.filter((r) => r.toUid === profile.uid && r.status === 'pending').length,
-    [social.friendRequests, profile.uid],
   );
   const claimableAchievementsCount = useMemo(
     () =>
@@ -300,20 +295,7 @@ export const LobbyOverlay: React.FC<LobbyOverlayProps> = ({
 
             <button
               type="button"
-              className="side-tile compact-tile"
-              onClick={() => onOpenModal('friends')}
-              data-testid="rail-friends"
-            >
-              {incomingFriendRequestsCount > 0 && (
-                <span className="notif-dot">{incomingFriendRequestsCount}</span>
-              )}
-              <FriendsIcon size={20} />
-              <span>AMIS</span>
-            </button>
-
-            <button
-              type="button"
-              className="side-tile compact-tile"
+              className="side-tile compact-tile wide-tile"
               onClick={() => onOpenModal('inbox')}
               data-testid="rail-inbox"
             >

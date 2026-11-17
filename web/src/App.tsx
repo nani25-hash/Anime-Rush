@@ -32,7 +32,7 @@ import {
 export const App: React.FC = () => {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<AnimeRushEngine | null>(null);
-  const { profile, social, searchResults, chestReward, toastMessage, selectedBoosts, actions } =
+  const { profile, social, chestReward, toastMessage, selectedBoosts, actions } =
     useGameProfile();
 
   const [quality, setQuality] = useState<QualityLevel>(() => loadSavedQuality());
@@ -373,21 +373,12 @@ export const App: React.FC = () => {
       )}
 
       {hud.phase === 'TITLE' &&
-        (activeModal === 'leaderboard' ||
-          activeModal === 'friends' ||
-          activeModal === 'inbox') && (
+        (activeModal === 'leaderboard' || activeModal === 'inbox') && (
           <SocialHubModal
             initialTab={activeModal}
             profile={profile}
             social={social}
-            searchResults={searchResults}
             onRefreshLeaderboard={actions.fetchLeaderboard}
-            onSearchPlayers={actions.searchPlayers}
-            onSendFriendRequest={actions.sendFriendRequest}
-            onAcceptRequest={actions.acceptFriendRequest}
-            onDeclineRequest={actions.declineFriendRequest}
-            onRemoveFriend={actions.removeFriend}
-            onSendGift={actions.sendFriendGift}
             onClaimInbox={actions.claimInboxMessage}
             onClaimAllInbox={actions.claimAllInbox}
             onClose={() => setActiveModal(null)}
@@ -402,7 +393,6 @@ export const App: React.FC = () => {
           onSaveDisplayName={actions.updateDisplayName}
           onQualityChange={handleQualityChange}
           onToggleMute={handleToggleMute}
-          onSignOut={actions.signOut}
           onClose={() => setActiveModal(null)}
         />
       )}

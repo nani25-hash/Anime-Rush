@@ -1,216 +1,621 @@
 import * as THREE from 'three';
 
-export function createRailwayTrackTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    return new THREE.CanvasTexture(canvas);
-  }
+/* ================================================================== */
+/* Helpers                                                              */
+/* ================================================================== */
 
-  // Warm-lit anime gravel ballast bed
-  ctx.fillStyle = '#2d293e';
-  ctx.fillRect(0, 0, 512, 512);
-
-  // Subtle gravel speckles across entire roadbed
-  for (let i = 0; i < 1600; i++) {
-    const seed = (i * 7919 + 104729) & 0xffff;
-    const x = seed % 512;
-    const y = (seed * 13) % 512;
-    const bright = 46 + (seed % 34);
-    ctx.fillStyle = `rgb(${bright + 6}, ${bright}, ${bright + 14})`;
-    ctx.fillRect(x, y, 3, 2);
-  }
-
-  // Three distinct track beds centered on the 3 lanes
-  // ROAD_WIDTH = 8.4, LANE_WIDTH = 2.35 -> lanes at -2.35 (0.220), 0 (0.500), +2.35 (0.780)
-  const laneCenters = [512 * 0.22, 512 * 0.5, 512 * 0.78];
-
-  for (const cx of laneCenters) {
-    // Deeper ballast trough under each track
-    const bedGrad = ctx.createLinearGradient(cx - 64, 0, cx + 64, 0);
-    bedGrad.addColorStop(0, 'rgba(18, 16, 28, 0)');
-    bedGrad.addColorStop(0.18, 'rgba(18, 16, 28, 0.52)');
-    bedGrad.addColorStop(0.82, 'rgba(18, 16, 28, 0.52)');
-    bedGrad.addColorStop(1, 'rgba(18, 16, 28, 0)');
-    ctx.fillStyle = bedGrad;
-    ctx.fillRect(cx - 64, 0, 128, 512);
-
-    // Wooden railway sleepers (cross-ties)
-    for (let y = 8; y < 512; y += 32) {
-      ctx.fillStyle = '#3e2723';
-      ctx.fillRect(cx - 50, y, 100, 12);
-      ctx.fillStyle = '#5d4037';
-      ctx.fillRect(cx - 48, y + 1, 96, 5);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(cx - 50, y + 11, 100, 3);
-    }
-
-    // Twin metallic steel rails with bright specular highlight
-    for (const offset of [-32, 32]) {
-      const rx = cx + offset;
-      ctx.fillStyle = '#1f2937';
-      ctx.fillRect(rx - 5, 0, 10, 512);
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillRect(rx - 3, 0, 6, 512);
-      ctx.fillStyle = '#f1f5f9';
-      ctx.fillRect(rx - 1, 0, 2, 512);
-    }
-  }
-
-  // Subtle pink-lavender edge trim
-  ctx.fillStyle = 'rgba(244, 114, 182, 0.22)';
-  ctx.fillRect(0, 0, 10, 512);
-  ctx.fillRect(502, 0, 10, 512);
-
-  // Scattered sakura petals resting on tracks
-  for (let i = 0; i < 42; i++) {
-    const px = ((i * 67 + 19) % 484) + 14;
-    const py = (i * 43 + 7) % 506;
-    ctx.fillStyle = i % 2 === 0 ? 'rgba(249, 168, 212, 0.85)' : 'rgba(253, 224, 239, 0.78)';
-    ctx.fillRect(px, py, 5, 3);
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(1, 3);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-export function createRoadBumpTexture(): THREE.CanvasTexture {
+function makeCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null } {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#666666';
-    ctx.fillRect(0, 0, 256, 256);
-    const laneCenters = [256 * 0.22, 256 * 0.5, 256 * 0.78];
-    for (const cx of laneCenters) {
-      for (let y = 4; y < 256; y += 16) {
-        ctx.fillStyle = '#b4b4b4';
-        ctx.fillRect(cx - 25, y, 50, 6);
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(cx - 17, 0, 4, 256);
-      ctx.fillRect(cx + 13, 0, 4, 256);
+  canvas.width = w;
+  canvas.height = h;
+  return { canvas, ctx: canvas.getContext('2d') };
+}
+
+interface TexOpts {
+  srgb?: boolean;
+  repeat?: boolean;
+  repeatXY?: [number, number];
+  anisotropy?: number;
+}
+
+function toTexture(canvas: HTMLCanvasElement, o: TexOpts = {}): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  if (o.repeat) {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+  }
+  if (o.repeatXY) tex.repeat.set(o.repeatXY[0], o.repeatXY[1]);
+  if (o.srgb !== false) tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = o.anisotropy ?? 8;
+  return tex;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+/** Draw `fn` at (x,y) and at wrapped offsets so tiles repeat without seams. */
+function wrapDraw(size: number, x: number, y: number, extent: number, fn: (ox: number, oy: number) => void): void {
+  const xs = [0];
+  const ys = [0];
+  if (x - extent < 0) xs.push(size);
+  if (x + extent > size) xs.push(-size);
+  if (y - extent < 0) ys.push(size);
+  if (y + extent > size) ys.push(-size);
+  for (const dx of xs) for (const dy of ys) fn(x + dx, y + dy);
+}
+
+/* ================================================================== */
+/* Cobblestone path (the "road")                                        */
+/* ================================================================== */
+
+interface StoneRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tone: number;
+}
+
+function stoneLayout(size: number, rows: number, seed: number): StoneRect[] {
+  const rand = rng(seed);
+  const rects: StoneRect[] = [];
+  const rowH = size / rows;
+  for (let r = 0; r < rows; r++) {
+    const cols = 4 + Math.floor(rand() * 2);
+    const raw: number[] = [];
+    let sum = 0;
+    for (let c = 0; c < cols; c++) {
+      const v = 0.7 + rand() * 0.7;
+      raw.push(v);
+      sum += v;
+    }
+    let cursor = rand() * size;
+    for (let c = 0; c < cols; c++) {
+      const w = (raw[c] / sum) * size;
+      rects.push({ x: cursor % size, y: r * rowH, w, h: rowH, tone: rand() });
+      cursor += w;
     }
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1, 3);
-  return tex;
+  return rects;
+}
+
+export function createCobblestoneTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(77);
+
+  ctx.fillStyle = '#2a2622';
+  ctx.fillRect(0, 0, size, size);
+
+  for (const s of stoneLayout(size, 8, 4242)) {
+    const hue = 26 + rand() * 24;
+    const sat = 5 + rand() * 11;
+    const light = 40 + s.tone * 20;
+    wrapDraw(size, s.x, s.y, s.w + 8, (ox, oy) => {
+      const m = 3;
+      roundRect(ctx, ox + m, oy + m, s.w - m * 2, s.h - m * 2, 9);
+      const g = ctx.createLinearGradient(ox, oy, ox + s.w, oy + s.h);
+      g.addColorStop(0, `hsl(${hue}, ${sat}%, ${light + 7}%)`);
+      g.addColorStop(1, `hsl(${hue + 6}, ${sat + 2}%, ${light - 8}%)`);
+      ctx.fillStyle = g;
+      ctx.fill();
+
+      // speckled grain
+      for (let k = 0; k < 46; k++) {
+        const px = ox + m + 4 + rand() * (s.w - m * 2 - 8);
+        const py = oy + m + 4 + rand() * (s.h - m * 2 - 8);
+        ctx.fillStyle = rand() > 0.5 ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.12)';
+        ctx.fillRect(px, py, 1 + rand() * 2.5, 1 + rand() * 2);
+      }
+      // bevel highlight (top/left) + shade (bottom/right)
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,245,230,0.22)';
+      ctx.beginPath();
+      ctx.moveTo(ox + m + 6, oy + m + 1.5);
+      ctx.lineTo(ox + s.w - m - 6, oy + m + 1.5);
+      ctx.moveTo(ox + m + 1.5, oy + m + 6);
+      ctx.lineTo(ox + m + 1.5, oy + s.h - m - 6);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(10,6,16,0.38)';
+      ctx.beginPath();
+      ctx.moveTo(ox + m + 6, oy + s.h - m - 1.5);
+      ctx.lineTo(ox + s.w - m - 6, oy + s.h - m - 1.5);
+      ctx.moveTo(ox + s.w - m - 1.5, oy + m + 6);
+      ctx.lineTo(ox + s.w - m - 1.5, oy + s.h - m - 6);
+      ctx.stroke();
+
+      // moss near edges
+      if (rand() < 0.35) {
+        const mx = ox + (rand() > 0.5 ? m + 4 : s.w - m - 4);
+        const my = oy + s.h - m - 4;
+        const mg = ctx.createRadialGradient(mx, my, 1, mx, my, 16 + rand() * 12);
+        mg.addColorStop(0, 'rgba(88,120,62,0.45)');
+        mg.addColorStop(1, 'rgba(88,120,62,0)');
+        ctx.fillStyle = mg;
+        ctx.fillRect(mx - 30, my - 30, 60, 60);
+      }
+      // hairline cracks
+      if (rand() < 0.18) {
+        ctx.strokeStyle = 'rgba(15,10,10,0.35)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const cx0 = ox + s.w * (0.2 + rand() * 0.6);
+        ctx.moveTo(cx0, oy + m + 3);
+        ctx.lineTo(cx0 + (rand() - 0.5) * 18, oy + s.h * 0.55);
+        ctx.lineTo(cx0 + (rand() - 0.5) * 26, oy + s.h - m - 3);
+        ctx.stroke();
+      }
+    });
+  }
+
+  // sakura petals resting on the stones
+  for (let i = 0; i < 70; i++) {
+    const px = rand() * size;
+    const py = rand() * size;
+    const rot = rand() * Math.PI;
+    wrapDraw(size, px, py, 8, (ox, oy) => {
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.rotate(rot);
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(255,226,238,0.9)' : 'rgba(247,160,200,0.88)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5.5, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  return toTexture(canvas, { repeat: true, repeatXY: [2, 3], anisotropy: 12 });
+}
+
+export function createCobblestoneBumpTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { srgb: false, repeat: true });
+  const rand = rng(91);
+  ctx.fillStyle = '#202020';
+  ctx.fillRect(0, 0, size, size);
+  for (const s of stoneLayout(size, 8, 4242)) {
+    const base = 150 + Math.floor(rand() * 60);
+    wrapDraw(size, s.x, s.y, s.w + 8, (ox, oy) => {
+      const m = 3;
+      roundRect(ctx, ox + m, oy + m, s.w - m * 2, s.h - m * 2, 9);
+      const g = ctx.createRadialGradient(
+        ox + s.w / 2,
+        oy + s.h / 2,
+        4,
+        ox + s.w / 2,
+        oy + s.h / 2,
+        Math.max(s.w, s.h) * 0.62,
+      );
+      g.addColorStop(0, `rgb(${base + 30},${base + 30},${base + 30})`);
+      g.addColorStop(1, `rgb(${base - 40},${base - 40},${base - 40})`);
+      ctx.fillStyle = g;
+      ctx.fill();
+      for (let k = 0; k < 40; k++) {
+        const v = 110 + Math.floor(rand() * 140);
+        ctx.fillStyle = `rgba(${v},${v},${v},0.5)`;
+        ctx.fillRect(ox + m + rand() * (s.w - 2 * m), oy + m + rand() * (s.h - 2 * m), 2, 2);
+      }
+    });
+  }
+  return toTexture(canvas, { srgb: false, repeat: true, repeatXY: [2, 3], anisotropy: 8 });
+}
+
+/* Backwards-compatible names used by the previous EnvironmentBuilder */
+export const createRailwayTrackTexture = createCobblestoneTexture;
+export const createRoadBumpTexture = createCobblestoneBumpTexture;
+
+/* ================================================================== */
+/* Stone, grass, plaster, roof, shoji, wood                              */
+/* ================================================================== */
+
+export function createStoneTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(11);
+  ctx.fillStyle = '#9a958d';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 22; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 20 + rand() * 50;
+    wrapDraw(size, x, y, r, (ox, oy) => {
+      const g = ctx.createRadialGradient(ox, oy, 2, ox, oy, r);
+      const l = rand() > 0.5 ? '255,255,255' : '40,36,40';
+      g.addColorStop(0, `rgba(${l},0.12)`);
+      g.addColorStop(1, `rgba(${l},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(ox - r, oy - r, r * 2, r * 2);
+    });
+  }
+  for (let i = 0; i < 1800; i++) {
+    const v = 90 + Math.floor(rand() * 130);
+    ctx.fillStyle = `rgba(${v},${v - 3},${v - 8},0.38)`;
+    ctx.fillRect(rand() * size, rand() * size, 1 + rand() * 2, 1 + rand() * 2);
+  }
+  // lichen
+  for (let i = 0; i < 16; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    wrapDraw(size, x, y, 22, (ox, oy) => {
+      const g = ctx.createRadialGradient(ox, oy, 1, ox, oy, 12 + rand() * 10);
+      g.addColorStop(0, 'rgba(110,140,80,0.35)');
+      g.addColorStop(1, 'rgba(110,140,80,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(ox - 24, oy - 24, 48, 48);
+    });
+  }
+  return toTexture(canvas, { repeat: true });
+}
+
+export function createGrassTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(303);
+  const bg = ctx.createLinearGradient(0, 0, size, size);
+  bg.addColorStop(0, '#2a5a37');
+  bg.addColorStop(1, '#21472f');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 1500; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const len = 6 + rand() * 12;
+    const lean = (rand() - 0.5) * 6;
+    const hue = 105 + rand() * 40;
+    const light = 22 + rand() * 24;
+    wrapDraw(size, x, y, len + 4, (ox, oy) => {
+      ctx.strokeStyle = `hsla(${hue}, 44%, ${light}%, 0.8)`;
+      ctx.lineWidth = 1 + rand() * 1.3;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.quadraticCurveTo(ox + lean * 0.4, oy - len * 0.5, ox + lean, oy - len);
+      ctx.stroke();
+    });
+  }
+  // fallen blossoms
+  for (let i = 0; i < 70; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    wrapDraw(size, x, y, 6, (ox, oy) => {
+      ctx.fillStyle = rand() > 0.4 ? 'rgba(248,166,203,0.9)' : 'rgba(255,230,240,0.9)';
+      ctx.beginPath();
+      ctx.ellipse(ox, oy, 3.4, 2, rand() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  return toTexture(canvas, { repeat: true });
+}
+
+export function createPlasterTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(515);
+  ctx.fillStyle = '#e4dccb';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 26; i++) {
+    const x = rand() * size;
+    const w = 6 + rand() * 18;
+    const g = ctx.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0, 'rgba(90,70,50,0)');
+    g.addColorStop(0.5, `rgba(90,70,50,${0.04 + rand() * 0.07})`);
+    g.addColorStop(1, 'rgba(90,70,50,0)');
+    wrapDraw(size, x, 0, w, (ox) => {
+      ctx.fillStyle = g;
+      ctx.fillRect(ox, 0, w, size);
+    });
+  }
+  for (let i = 0; i < 2600; i++) {
+    const v = 190 + Math.floor(rand() * 60);
+    ctx.fillStyle = `rgba(${v},${v - 6},${v - 18},0.28)`;
+    ctx.fillRect(rand() * size, rand() * size, 1 + rand() * 2, 1 + rand() * 2);
+  }
+  // damp stains near the bottom edge of the tile
+  const stain = ctx.createLinearGradient(0, size * 0.75, 0, size);
+  stain.addColorStop(0, 'rgba(70,60,50,0)');
+  stain.addColorStop(1, 'rgba(70,60,50,0.18)');
+  ctx.fillStyle = stain;
+  ctx.fillRect(0, size * 0.75, size, size * 0.25);
+  return toTexture(canvas, { repeat: true });
+}
+
+export function createRoofTileTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(909);
+  ctx.fillStyle = '#232a3a';
+  ctx.fillRect(0, 0, size, size);
+  const cols = 16;
+  const rows = 8;
+  const cw = size / cols;
+  const rh = size / rows;
+  for (let c = 0; c < cols; c++) {
+    const g = ctx.createLinearGradient(c * cw, 0, (c + 1) * cw, 0);
+    g.addColorStop(0, '#171c28');
+    g.addColorStop(0.45, '#4a5873');
+    g.addColorStop(0.6, '#5d6c8b');
+    g.addColorStop(1, '#1a2030');
+    ctx.fillStyle = g;
+    ctx.fillRect(c * cw, 0, cw - 1, size);
+  }
+  for (let r = 0; r < rows; r++) {
+    const y = r * rh;
+    const lg = ctx.createLinearGradient(0, y, 0, y + rh);
+    lg.addColorStop(0, 'rgba(0,0,0,0.55)');
+    lg.addColorStop(0.18, 'rgba(0,0,0,0)');
+    lg.addColorStop(0.82, 'rgba(255,255,255,0.05)');
+    lg.addColorStop(1, 'rgba(255,255,255,0.14)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, y, size, rh);
+  }
+  for (let i = 0; i < 500; i++) {
+    ctx.fillStyle = `rgba(${rand() > 0.5 ? '255,255,255' : '0,0,0'},${0.04 + rand() * 0.06})`;
+    ctx.fillRect(rand() * size, rand() * size, 1 + rand() * 3, 1 + rand() * 2);
+  }
+  return toTexture(canvas, { repeat: true });
+}
+
+export function createShojiTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas);
+  const g = ctx.createRadialGradient(size / 2, size * 0.55, 10, size / 2, size / 2, size * 0.75);
+  g.addColorStop(0, '#fff0c8');
+  g.addColorStop(0.55, '#ffcf86');
+  g.addColorStop(1, '#f59a4c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  // paper fibres
+  const rand = rng(21);
+  for (let i = 0; i < 260; i++) {
+    ctx.strokeStyle = `rgba(255,255,255,${0.05 + rand() * 0.1})`;
+    ctx.lineWidth = 1;
+    const x = rand() * size;
+    const y = rand() * size;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rand() - 0.5) * 16, y + (rand() - 0.5) * 16);
+    ctx.stroke();
+  }
+  // kumiko lattice
+  ctx.fillStyle = '#3a2417';
+  const bars = 4;
+  for (let i = 0; i <= bars; i++) {
+    const p = (i / bars) * (size - 10);
+    ctx.fillRect(p, 0, 10, size);
+  }
+  const hbars = 6;
+  for (let i = 0; i <= hbars; i++) {
+    const p = (i / hbars) * (size - 8);
+    ctx.fillRect(0, p, size, 8);
+  }
+  ctx.fillStyle = 'rgba(255,220,160,0.28)';
+  ctx.fillRect(0, 0, size, 3);
+  return toTexture(canvas, { anisotropy: 8 });
+}
+
+export function createDarkWoodTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(1313);
+  ctx.fillStyle = '#4a3326';
+  ctx.fillRect(0, 0, size, size);
+  for (let x = 0; x < size; x += 2) {
+    const v = 0.04 + rand() * 0.14;
+    ctx.fillStyle = rand() > 0.5 ? `rgba(20,10,6,${v})` : `rgba(190,130,90,${v * 0.5})`;
+    ctx.fillRect(x, 0, 1 + rand() * 2, size);
+  }
+  for (let i = 0; i < 14; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    ctx.strokeStyle = 'rgba(15,8,4,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 3 + rand() * 4, 10 + rand() * 20, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  return toTexture(canvas, { repeat: true });
 }
 
 export function createWoodGrainTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#c93326';
-    ctx.fillRect(0, 0, 256, 256);
-    for (let y = 0; y < 256; y += 4) {
-      const alpha = 0.06 + ((y * 7) % 10) * 0.012;
-      ctx.fillStyle = y % 8 === 0 ? `rgba(50, 12, 8, ${alpha})` : `rgba(255, 200, 165, ${alpha * 0.6})`;
-      ctx.fillRect(0, y, 256, 2);
-    }
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (!ctx) return toTexture(canvas, { repeat: true });
+  const rand = rng(1717);
+  const base = ctx.createLinearGradient(0, 0, size, 0);
+  base.addColorStop(0, '#b92b1f');
+  base.addColorStop(0.5, '#d83a28');
+  base.addColorStop(1, '#b02419');
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+  for (let y = 0; y < size; y += 2) {
+    const a = 0.04 + rand() * 0.08;
+    ctx.fillStyle = y % 4 === 0 ? `rgba(60,10,6,${a})` : `rgba(255,190,160,${a * 0.55})`;
+    ctx.fillRect(0, y, size, 1 + rand() * 1.5);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  // lacquer gloss streak
+  const gloss = ctx.createLinearGradient(0, 0, size, 0);
+  gloss.addColorStop(0.1, 'rgba(255,230,220,0)');
+  gloss.addColorStop(0.28, 'rgba(255,230,220,0.28)');
+  gloss.addColorStop(0.4, 'rgba(255,230,220,0)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, size, size);
+  return toTexture(canvas, { repeat: true });
 }
 
+/* ================================================================== */
+/* Lighting sprites & sky                                                */
+/* ================================================================== */
+
 export function createRadialShadowTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = makeCanvas(128, 128);
   if (ctx) {
     const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 60);
-    grad.addColorStop(0, 'rgba(8, 10, 20, 0.78)');
-    grad.addColorStop(0.55, 'rgba(8, 10, 20, 0.36)');
-    grad.addColorStop(1, 'rgba(8, 10, 20, 0)');
+    grad.addColorStop(0, 'rgba(8, 6, 20, 0.8)');
+    grad.addColorStop(0.55, 'rgba(8, 6, 20, 0.38)');
+    grad.addColorStop(1, 'rgba(8, 6, 20, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 128, 128);
   }
   return new THREE.CanvasTexture(canvas);
 }
 
+export function createSoftGlowTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(128, 128);
+  if (ctx) {
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.18, 'rgba(255,255,255,0.65)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.16)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  return toTexture(canvas, { anisotropy: 1 });
+}
+
 export function createMoonGlowTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = makeCanvas(256, 256);
   if (ctx) {
     const grad = ctx.createRadialGradient(128, 128, 14, 128, 128, 126);
-    grad.addColorStop(0, 'rgba(255, 240, 224, 0.95)');
-    grad.addColorStop(0.35, 'rgba(249, 168, 212, 0.5)');
-    grad.addColorStop(0.7, 'rgba(56, 189, 248, 0.18)');
-    grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    grad.addColorStop(0, 'rgba(255, 244, 228, 0.95)');
+    grad.addColorStop(0.3, 'rgba(255, 214, 232, 0.5)');
+    grad.addColorStop(0.65, 'rgba(150, 170, 255, 0.2)');
+    grad.addColorStop(1, 'rgba(120, 150, 255, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 256);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas, { anisotropy: 1 });
+}
+
+export function createMoonTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (ctx) {
+    const rand = rng(8);
+    const g = ctx.createRadialGradient(size / 2, size / 2, 20, size / 2, size / 2, size / 2);
+    g.addColorStop(0, '#fffaf0');
+    g.addColorStop(0.8, '#ffeccb');
+    g.addColorStop(1, '#ffd9b0');
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 16; i++) {
+      const x = size * (0.15 + rand() * 0.7);
+      const y = size * (0.15 + rand() * 0.7);
+      const r = 20 + rand() * 60;
+      const mg = ctx.createRadialGradient(x, y, 2, x, y, r);
+      mg.addColorStop(0, 'rgba(190,150,120,0.22)');
+      mg.addColorStop(1, 'rgba(190,150,120,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    ctx.restore();
+  }
+  return toTexture(canvas, { anisotropy: 2 });
 }
 
 export function createAnimeTwilightSkyTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
+  const w = 1024;
+  const h = 512;
+  const { canvas, ctx } = makeCanvas(w, h);
   if (ctx) {
-    // Rich Makoto Shinkai / Tokyo twilight anime gradient
-    const grad = ctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, '#0b1033');
-    grad.addColorStop(0.28, '#1d3674');
-    grad.addColorStop(0.58, '#4f65b5');
-    grad.addColorStop(0.8, '#c084ac');
-    grad.addColorStop(1, '#fda4af');
+    const rand = rng(2468);
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#080b2b');
+    grad.addColorStop(0.3, '#1a2466');
+    grad.addColorStop(0.55, '#46489a');
+    grad.addColorStop(0.78, '#a275b8');
+    grad.addColorStop(1, '#f0aac4');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 512, 512);
+    ctx.fillRect(0, 0, w, h);
 
-    // Warm sunset / sakura cloud bands
-    const cloudColors = [
-      'rgba(255, 228, 230, 0.35)',
-      'rgba(251, 207, 232, 0.28)',
-      'rgba(191, 219, 254, 0.25)',
-    ];
-    for (let i = 0; i < 14; i++) {
-      const cx = ((i * 89 + 40) % 470) + 21;
-      const cy = 220 + ((i * 37) % 165);
-      const r = 42 + (i % 4) * 18;
-      const rg = ctx.createRadialGradient(cx, cy, 4, cx, cy, r);
-      rg.addColorStop(0, cloudColors[i % cloudColors.length]);
-      rg.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = rg;
-      ctx.fillRect(cx - r, cy - r * 0.55, r * 2, r * 1.1);
-    }
+    // moonlit aura behind the (separate) moon disc
+    const aura = ctx.createRadialGradient(w / 2, 300, 10, w / 2, 300, 300);
+    aura.addColorStop(0, 'rgba(255,236,226,0.75)');
+    aura.addColorStop(0.25, 'rgba(255,200,226,0.35)');
+    aura.addColorStop(0.7, 'rgba(130,150,255,0.12)');
+    aura.addColorStop(1, 'rgba(130,150,255,0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(0, 0, w, h);
 
-    // Crisp upper twilight stars
-    for (let i = 0; i < 110; i++) {
-      const x = Math.abs((Math.sin(i * 12.9898) * 43758.5453) % 1) * 512;
-      const y = Math.abs((Math.sin(i * 78.233) * 43758.5453) % 1) * 230;
-      const r = 0.65 + (i % 3) * 0.45;
-      ctx.fillStyle = i % 4 === 0 ? 'rgba(254, 240, 138, 0.9)' : 'rgba(255, 255, 255, 0.75)';
+    // stars
+    for (let i = 0; i < 220; i++) {
+      const x = rand() * w;
+      const y = rand() * h * 0.5;
+      const r = 0.5 + rand() * 1.3;
+      ctx.fillStyle = i % 5 === 0 ? 'rgba(255,240,170,0.95)' : 'rgba(255,255,255,0.8)';
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // layered anime clouds, rim-lit from the moon
+    for (let layer = 0; layer < 3; layer++) {
+      const baseY = 250 + layer * 60;
+      for (let i = 0; i < 9; i++) {
+        const cx = rand() * w;
+        const cy = baseY + rand() * 36;
+        const rw = 90 + rand() * 150;
+        const rh2 = 14 + rand() * 20;
+        const cg = ctx.createRadialGradient(cx, cy, 4, cx, cy, rw);
+        cg.addColorStop(0, `rgba(${90 + layer * 25},${88 + layer * 20},${150 + layer * 20},0.55)`);
+        cg.addColorStop(1, 'rgba(80,80,150,0)');
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1, rh2 / rw);
+        ctx.translate(-cx, -cy);
+        ctx.fillStyle = cg;
+        ctx.fillRect(cx - rw, cy - rw, rw * 2, rw * 2);
+        ctx.restore();
+        // thin pink rim on the upper edge
+        ctx.strokeStyle = 'rgba(255,205,230,0.28)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - rh2 * 0.35, rw * 0.55, rh2 * 0.55, 0, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
+      }
+    }
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas, { anisotropy: 2 });
 }
+
+/* ================================================================== */
+/* Signs (kept under the old name)                                       */
+/* ================================================================== */
 
 export function createNeonSignTexture(
   mainText: string,
@@ -218,166 +623,231 @@ export function createNeonSignTexture(
   bgHex: string,
   borderHex: string,
 ): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = makeCanvas(256, 128);
   if (ctx) {
-    ctx.fillStyle = bgHex;
+    const g = ctx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, bgHex);
+    g.addColorStop(1, '#0b0a14');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 128);
+    // lacquered board border + inner gold line
     ctx.strokeStyle = borderHex;
-    ctx.lineWidth = 6;
-    ctx.strokeRect(5, 5, 246, 118);
+    ctx.lineWidth = 7;
+    ctx.strokeRect(4, 4, 248, 120);
+    ctx.strokeStyle = 'rgba(255,230,160,0.8)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(12, 12, 232, 104);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 30px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(mainText, 128, 48);
-
+    ctx.shadowColor = borderHex;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = '#fff7e6';
+    ctx.font = 'bold 30px "Noto Serif JP", "Yu Mincho", serif';
+    ctx.fillText(mainText, 128, 50);
+    ctx.shadowBlur = 0;
     ctx.fillStyle = borderHex;
-    ctx.font = 'bold 16px sans-serif';
+    ctx.font = 'bold 15px "Noto Sans JP", sans-serif';
     ctx.fillText(subText, 128, 92);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas, { anisotropy: 4 });
 }
 
-export function createRushTrainSideTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+/* ================================================================== */
+/* Festival cart textures (replace the old trains)                       */
+/* ================================================================== */
+
+export function createFestivalCartSideTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(512, 256);
   if (ctx) {
-    // Crisp silver commuter body + crimson RUSH express stripe (matches mockup!)
-    ctx.fillStyle = '#e2e8f0';
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#d63a28');
+    g.addColorStop(1, '#8e1a14');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, 512, 256);
-
-    // Lower bold crimson RUSH stripe
-    ctx.fillStyle = '#dc2626';
-    ctx.fillRect(0, 146, 512, 76);
-
-    // Dark undercarriage skirt
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(0, 222, 512, 34);
-
-    // Top crimson accent bar
-    ctx.fillStyle = '#b91c1c';
-    ctx.fillRect(0, 0, 512, 24);
-
-    // Lit commuter windows
-    for (let x = 22; x <= 430; x += 98) {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(x, 42, 74, 78);
-      ctx.fillStyle = '#bae6fd';
-      ctx.fillRect(x + 5, 47, 64, 66);
-      // Warm interior silhouette sheen
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-      ctx.fillRect(x + 10, 52, 16, 54);
+    // gold trim
+    ctx.fillStyle = '#e9b949';
+    ctx.fillRect(0, 0, 512, 14);
+    ctx.fillRect(0, 242, 512, 14);
+    ctx.fillRect(0, 118, 512, 6);
+    // carved panels with sakura crests
+    for (let i = 0; i < 4; i++) {
+      const x = 22 + i * 122;
+      ctx.strokeStyle = '#f4d27a';
+      ctx.lineWidth = 4;
+      roundRect(ctx, x, 34, 100, 74, 8);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(40,6,4,0.45)';
+      roundRect(ctx, x + 4, 38, 92, 66, 6);
+      ctx.fill();
+      ctx.fillStyle = '#ffd3e6';
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.ellipse(x + 50 + Math.cos(a) * 14, 71 + Math.sin(a) * 14, 9, 6, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#f4d27a';
+      ctx.beginPath();
+      ctx.arc(x + 50, 71, 5, 0, Math.PI * 2);
+      ctx.fill();
     }
-
-    // Bold stylized "RUSH" graffiti emblem across the side
-    ctx.save();
-    ctx.translate(256, 184);
-    ctx.rotate(-0.04);
-    ctx.font = '900 italic 54px sans-serif';
+    // kohaku curtain band
+    for (let i = 0; i < 16; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#fdf6ea' : '#d02b2b';
+      ctx.fillRect(i * 32, 140, 32, 76);
+    }
+    ctx.fillStyle = '#1b1020';
+    ctx.font = '900 54px "Noto Serif JP", serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = '#0f172a';
-    ctx.strokeText('RUSH', 0, 0);
-    ctx.fillStyle = '#fef08a';
-    ctx.fillText('RUSH', 0, 0);
-    ctx.restore();
+    ctx.fillText('祭', 256, 178);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas);
 }
 
-export function createRushTrainFrontTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+export function createFestivalCartFrontTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(256, 256);
   if (ctx) {
-    ctx.fillStyle = '#e2e8f0';
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#d63a28');
+    g.addColorStop(1, '#8e1a14');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 256);
-
-    ctx.fillStyle = '#dc2626';
-    ctx.fillRect(0, 140, 256, 86);
-
-    // Panoramic driver windshield
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(22, 30, 212, 92);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(30, 38, 90, 74);
-    ctx.fillRect(136, 38, 90, 74);
-
-    // Destination LED sign
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(68, 8, 120, 18);
-    ctx.fillStyle = '#fb7185';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.strokeStyle = '#f2cf72';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(10, 10, 236, 236);
+    ctx.fillStyle = '#fdf6ea';
+    ctx.beginPath();
+    ctx.arc(128, 118, 66, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f7a3c6';
+    for (let p = 0; p < 5; p++) {
+      const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.ellipse(128 + Math.cos(a) * 28, 118 + Math.sin(a) * 28, 20, 13, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#e9b949';
+    ctx.beginPath();
+    ctx.arc(128, 118, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fdf6ea';
+    ctx.font = '900 40px "Noto Serif JP", serif';
     ctx.textAlign = 'center';
-    ctx.fillText('桜 EXPRESS', 128, 21);
-
-    // Front RUSH emblem
-    ctx.font = '900 italic 38px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fef08a';
-    ctx.strokeStyle = '#18181b';
-    ctx.lineWidth = 5;
-    ctx.strokeText('RUSH', 128, 184);
-    ctx.fillText('RUSH', 128, 184);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('疾走', 128, 214);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas);
 }
+
+/* Deprecated aliases kept so older imports keep compiling */
+export const createRushTrainSideTexture = createFestivalCartSideTexture;
+export const createRushTrainFrontTexture = createFestivalCartFrontTexture;
+
+/* ================================================================== */
+/* Coin & petals                                                         */
+/* ================================================================== */
 
 export function createNekoCoinTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = makeCanvas(256, 256);
   if (ctx) {
-    const grad = ctx.createRadialGradient(64, 54, 8, 64, 64, 62);
-    grad.addColorStop(0, '#fef08a');
-    grad.addColorStop(0.65, '#facc15');
-    grad.addColorStop(1, '#d97706');
+    const grad = ctx.createRadialGradient(100, 90, 12, 128, 128, 126);
+    grad.addColorStop(0, '#fff6b8');
+    grad.addColorStop(0.55, '#facc15');
+    grad.addColorStop(1, '#c47a08');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.arc(128, 128, 122, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = '#fef9c3';
-    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#fff3a8';
+    ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.arc(64, 64, 52, 0, Math.PI * 2);
+    ctx.arc(128, 128, 104, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,60,0,0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(128, 128, 112, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Cute cat silhouette emblem (Neko Coin from mockup!)
-    ctx.fillStyle = '#92400e';
+    // embossed maneki-neko face
+    const brown = '#8a4b08';
+    ctx.fillStyle = brown;
     ctx.beginPath();
-    ctx.arc(64, 70, 22, 0, Math.PI * 2);
+    ctx.ellipse(128, 140, 52, 44, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Cat ears
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(128 + s * 18, 108);
+      ctx.lineTo(128 + s * 56, 64);
+      ctx.lineTo(128 + s * 54, 118);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f7b29a';
+      ctx.beginPath();
+      ctx.moveTo(128 + s * 28, 108);
+      ctx.lineTo(128 + s * 50, 78);
+      ctx.lineTo(128 + s * 49, 112);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = brown;
+    }
+    ctx.strokeStyle = '#ffe9a6';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(128 + s * 22, 134, 9, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+      for (let k = 0; k < 2; k++) {
+        ctx.beginPath();
+        ctx.moveTo(128 + s * 36, 150 + k * 7);
+        ctx.lineTo(128 + s * 62, 146 + k * 12);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = '#ff9fb5';
     ctx.beginPath();
-    ctx.moveTo(44, 58);
-    ctx.lineTo(44, 34);
-    ctx.lineTo(60, 50);
+    ctx.moveTo(122, 148);
+    ctx.lineTo(134, 148);
+    ctx.lineTo(128, 156);
     ctx.closePath();
     ctx.fill();
+    // little bell
+    ctx.fillStyle = '#fff3a8';
     ctx.beginPath();
-    ctx.moveTo(84, 58);
-    ctx.lineTo(84, 34);
-    ctx.lineTo(68, 50);
-    ctx.closePath();
+    ctx.arc(128, 188, 10, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = brown;
+    ctx.fillRect(122, 186, 12, 2);
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return toTexture(canvas, { anisotropy: 8 });
+}
+
+export function createPetalTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(64, 64);
+  if (ctx) {
+    ctx.translate(32, 32);
+    const g = ctx.createLinearGradient(0, -24, 0, 24);
+    g.addColorStop(0, '#fff0f6');
+    g.addColorStop(0.6, '#f9a8cf');
+    g.addColorStop(1, '#ee79ad');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, 22);
+    ctx.bezierCurveTo(-22, 14, -20, -14, -7, -22);
+    ctx.lineTo(0, -15);
+    ctx.lineTo(7, -22);
+    ctx.bezierCurveTo(20, -14, 22, 14, 0, 22);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(210,80,140,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 20);
+    ctx.lineTo(0, -10);
+    ctx.stroke();
+  }
+  return toTexture(canvas, { anisotropy: 2 });
 }

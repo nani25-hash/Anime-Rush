@@ -304,6 +304,14 @@ body,
   font-size: 8px;
 }
 
+.side-tile.wide-tile {
+  grid-column: span 2;
+  flex-direction: row;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 9px;
+}
+
 .side-tile.tile-armed {
   border-color: #facc15;
   box-shadow: 0 0 12px rgba(250, 204, 21, 0.35);
