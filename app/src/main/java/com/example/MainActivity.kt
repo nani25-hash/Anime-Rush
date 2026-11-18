@@ -602,6 +602,9 @@ class MainActivity : ComponentActivity() {
                 path.endsWith(".svg") -> "image/svg+xml"
                 path.endsWith(".png") -> "image/png"
                 path.endsWith(".jpg") || path.endsWith(".jpeg") -> "image/jpeg"
+                path.endsWith(".mp3") -> "audio/mpeg"
+                path.endsWith(".wav") -> "audio/wav"
+                path.endsWith(".obj") || path.endsWith(".mtl") -> "text/plain"
                 else -> response.mimeType ?: "application/octet-stream"
               }
             val encoding =

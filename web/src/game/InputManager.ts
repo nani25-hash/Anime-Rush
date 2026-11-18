@@ -1,4 +1,11 @@
-export type InputAction = 'LEFT' | 'RIGHT' | 'JUMP' | 'SLIDE' | 'PAUSE';
+export type InputAction =
+  | 'LEFT'
+  | 'RIGHT'
+  | 'JUMP'
+  | 'SLIDE'
+  | 'PAUSE'
+  | 'ACTIVATE_CAR'
+  | 'ACTIVATE_POWER';
 
 export class InputManager {
   private readonly target: HTMLElement;
@@ -106,6 +113,14 @@ export class InputManager {
       case 'KeyS':
         e.preventDefault();
         this.onAction('SLIDE');
+        break;
+      case 'KeyE':
+      case 'KeyC':
+        this.onAction('ACTIVATE_CAR');
+        break;
+      case 'KeyF':
+      case 'KeyV':
+        this.onAction('ACTIVATE_POWER');
         break;
       case 'Escape':
       case 'KeyP':

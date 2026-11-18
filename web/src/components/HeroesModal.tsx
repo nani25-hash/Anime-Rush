@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { COMPANION_CATALOG, HERO_CATALOG } from '../config/catalog';
 import { PlayerProfile } from '../types/game';
-import { CloseIcon, CoinIcon, GemIcon } from './Icons';
+import { BoltIcon, CloseIcon, CoinIcon, GemIcon, ShieldIcon } from './Icons';
 
 interface HeroesModalProps {
   profile: PlayerProfile;
@@ -15,6 +15,17 @@ interface HeroesModalProps {
   onClose: () => void;
 }
 
+type HeroFilter = 'Tous' | 'Canoniques' | 'Actuels' | 'Spécial 3D' | 'Nouveaux' | 'Débloqués';
+
+const HERO_FILTERS: HeroFilter[] = [
+  'Tous',
+  'Canoniques',
+  'Actuels',
+  'Spécial 3D',
+  'Nouveaux',
+  'Débloqués',
+];
+
 export const HeroesModal: React.FC<HeroesModalProps> = ({
   profile,
   onEquip,
@@ -22,14 +33,23 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
   onClose,
 }) => {
   const [subTab, setSubTab] = useState<'heroes' | 'companions'>('heroes');
+  const [filter, setFilter] = useState<HeroFilter>('Tous');
+
+  const filteredHeroes = useMemo(() => {
+    if (filter === 'Tous') return HERO_CATALOG;
+    if (filter === 'Débloqués') {
+      return HERO_CATALOG.filter((h) => profile.unlockedHeroIds.includes(h.id));
+    }
+    return HERO_CATALOG.filter((h) => h.category === filter);
+  }, [filter, profile.unlockedHeroIds]);
 
   return (
     <div className="sheet-backdrop interactive" onClick={onClose}>
       <div className="sheet-card" onClick={(e) => e.stopPropagation()} data-testid="heroes-modal">
         <div className="sheet-header">
           <div>
-            <h2 className="sheet-title">PERSONNAGES & SHIBA</h2>
-            <p className="sheet-sub">Changez votre style 3D en temps réel sur la piste</p>
+            <h2 className="sheet-title">PERSONNAGES & POUVOIRS ({HERO_CATALOG.length})</h2>
+            <p className="sheet-sub">Bonus passif unique + pouvoir actif rechargeable en course</p>
           </div>
           <button type="button" className="sheet-close" onClick={onClose} aria-label="Fermer">
             <CloseIcon size={20} />
@@ -49,14 +69,29 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
             className={`sheet-tab ${subTab === 'companions' ? 'active' : ''}`}
             onClick={() => setSubTab('companions')}
           >
-            COMPAGNONS SHIBA ({COMPANION_CATALOG.length})
+            SHIBA ({COMPANION_CATALOG.length})
           </button>
         </div>
+
+        {subTab === 'heroes' && (
+          <div className="hero-filter-strip">
+            {HERO_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`filter-chip ${filter === f ? 'active' : ''}`}
+                onClick={() => setFilter(f)}
+              >
+                {f === 'Tous' ? `Tous (${HERO_CATALOG.length})` : f}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="sheet-scroll">
           {subTab === 'heroes' ? (
             <div className="cards-list">
-              {HERO_CATALOG.map((hero) => {
+              {filteredHeroes.map((hero) => {
                 const unlocked = profile.unlockedHeroIds.includes(hero.id);
                 const equipped = profile.equippedHeroId === hero.id;
                 const affordable =
@@ -85,9 +120,18 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
                         <span className="rarity-pill" style={{ color: hero.uiAccent }}>
                           {hero.rarity}
                         </span>
+                        <span className="category-pill">{hero.category}</span>
                       </div>
                       <span className="char-title">{hero.title}</span>
                       <p className="shop-desc">{hero.description}</p>
+                      <div className="hero-power-pills">
+                        <span className="power-badge passive">
+                          <ShieldIcon size={12} /> {hero.power.passiveLabel}
+                        </span>
+                        <span className="power-badge active-skill">
+                          <BoltIcon size={12} /> {hero.power.activeName} : {hero.power.activeDescription}
+                        </span>
+                      </div>
                     </div>
                     <div className="character-action">
                       {equipped ? (

@@ -97,4 +97,23 @@ class LocalGameRepositoryTest {
     assertEquals("AkiraRunner", lb.first().displayName)
     assertEquals(6200L, lb.first().bestScore)
   }
+
+  @Test
+  fun `unlocks and equips canonical and Miss Maia heroes locally`() = runTest {
+    repository.ensurePlayerInitialized().getOrThrow()
+    repository.claimAllInbox().getOrThrow()
+
+    val withSigma =
+      repository.purchaseShopItem(
+        itemType = "hero",
+        itemId = "sigma",
+        currency = "coins",
+        cost = 500L,
+      ).getOrThrow()
+    assertTrue(withSigma.unlockedHeroIds.contains("sigma"))
+    assertEquals("sigma", withSigma.equippedHeroId)
+
+    val equippedDefault = repository.equipLoadout("ryu", withSigma.equippedCompanionId).getOrThrow()
+    assertEquals("ryu", equippedDefault.equippedHeroId)
+  }
 }

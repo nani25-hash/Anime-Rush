@@ -1,3 +1,5 @@
+import type { LaneIndex } from '../types/game';
+
 export interface AabbBox {
   minX: number;
   maxX: number;
@@ -46,4 +48,54 @@ export function isSideGrazeCollision(
   if (!isChangingLane) return false;
   const lateralOffset = Math.abs(runnerX - obstacleCenterX);
   return lateralOffset >= obstacleHalfWidth * 0.55;
+}
+
+/**
+ * Checks whether the runner hits the solid brick portions of a full-width 3-lane
+ * brick wall with an archway portal opening over `openLanes`.
+ */
+export function checkWallGateCollision(
+  runnerBox: AabbBox,
+  wallZ: number,
+  halfDepth: number,
+  openLanes: readonly LaneIndex[],
+  laneWidth: number,
+  wallHeight = 3.2,
+  portalClearHalfWidth = 0.92,
+  portalTopY = 2.65,
+): boolean {
+  if (runnerBox.maxZ < wallZ - halfDepth || runnerBox.minZ > wallZ + halfDepth) {
+    return false;
+  }
+  if (runnerBox.maxY <= 0.08 || runnerBox.minY >= wallHeight - 0.08) {
+    return false;
+  }
+
+  const runnerCenterX = (runnerBox.minX + runnerBox.maxX) * 0.5;
+
+  // Allow clean passage if inside any open portal lane and below the lintel
+  for (const lane of openLanes) {
+    const laneCenterX = lane * laneWidth;
+    if (
+      Math.abs(runnerCenterX - laneCenterX) <= portalClearHalfWidth &&
+      runnerBox.maxY <= portalTopY
+    ) {
+      return false;
+    }
+  }
+
+  // If runner spans cleanly across adjacent open lanes (for 2-lane archway)
+  if (openLanes.length === 2) {
+    const minPortalX = Math.min(openLanes[0], openLanes[1]) * laneWidth - portalClearHalfWidth;
+    const maxPortalX = Math.max(openLanes[0], openLanes[1]) * laneWidth + portalClearHalfWidth;
+    if (
+      runnerCenterX >= minPortalX &&
+      runnerCenterX <= maxPortalX &&
+      runnerBox.maxY <= portalTopY
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }

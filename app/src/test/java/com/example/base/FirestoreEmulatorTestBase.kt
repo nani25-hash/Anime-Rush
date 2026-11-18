@@ -10,11 +10,14 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
+import java.net.InetSocketAddress
+import java.net.Socket
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
+import org.junit.Assume
 import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,8 +33,23 @@ abstract class FirestoreEmulatorTestBase {
   protected lateinit var auth: FirebaseAuth
   protected lateinit var databaseId: String
 
+  private fun isPortReachable(host: String, port: Int): Boolean =
+    try {
+      Socket().use { socket ->
+        socket.connect(InetSocketAddress(host, port), 150)
+        true
+      }
+    } catch (_: Exception) {
+      false
+    }
+
   @Before
   open fun setUpFirebase() {
+    Assume.assumeTrue(
+      "Firebase emulators ($EMULATOR_HOST:$FIRESTORE_PORT / $AUTH_PORT) not running; skipping rule test.",
+      isPortReachable(EMULATOR_HOST, FIRESTORE_PORT) && isPortReachable(EMULATOR_HOST, AUTH_PORT),
+    )
+
     val context = ApplicationProvider.getApplicationContext<Context>()
     val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
     databaseId = if (resId != 0) context.getString(resId) else "demo-database"
@@ -67,7 +85,9 @@ abstract class FirestoreEmulatorTestBase {
 
   @After
   open fun tearDownFirebase() {
-    auth.signOut()
+    if (::auth.isInitialized) {
+      auth.signOut()
+    }
   }
 
   protected suspend fun signInTestUser(email: String): String =

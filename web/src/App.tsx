@@ -56,6 +56,19 @@ export const App: React.FC = () => {
     jumps: 0,
     slides: 0,
     headStartActive: false,
+    fuelPct: 0,
+    fuelCount: 0,
+    fuelMax: 100,
+    fuelReady: false,
+    carRemaining: 0,
+    carActive: false,
+    heroName: 'Ryu Hoshino',
+    heroPowerName: 'Élan Torii',
+    heroPowerAccent: '#ef4444',
+    heroPowerChargePct: 45,
+    heroPowerReady: false,
+    heroPowerActiveRemaining: 0,
+    heroPassiveSummary: '+10% Score final en course',
   }));
 
   const selectedBoostsRef = useRef(selectedBoosts);
@@ -202,6 +215,14 @@ export const App: React.FC = () => {
     engineRef.current?.returnToTitle();
   }, []);
 
+  const handleActivateCar = useCallback(() => {
+    engineRef.current?.activateCarMode();
+  }, []);
+
+  const handleActivateHeroPower = useCallback(() => {
+    engineRef.current?.activateHeroPower();
+  }, []);
+
   const handleQualityChange = useCallback((nextQuality: QualityLevel) => {
     setQuality(nextQuality);
     saveQuality(nextQuality);
@@ -298,7 +319,14 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {!engineError && hud.phase === 'PLAYING' && <GameHud hud={hud} onPause={handlePause} />}
+      {!engineError && hud.phase === 'PLAYING' && (
+        <GameHud
+          hud={hud}
+          onPause={handlePause}
+          onActivateCar={handleActivateCar}
+          onActivateHeroPower={handleActivateHeroPower}
+        />
+      )}
 
       {!engineError && hud.phase === 'PAUSED' && (
         <PauseModal
@@ -320,9 +348,10 @@ export const App: React.FC = () => {
       {hud.phase === 'TITLE' && activeModal === 'shop' && (
         <ShopModal
           profile={profile}
-          onBuyItem={(itemType, itemId, currency, cost) =>
-            actions.purchaseShopItem(itemType, itemId, currency, cost)
-          }
+          onBuyItem={(itemType, itemId, currency, cost) => {
+            engineRef.current?.playCashSound();
+            actions.purchaseShopItem(itemType, itemId, currency, cost);
+          }}
           onClose={() => setActiveModal(null)}
         />
       )}
@@ -330,10 +359,14 @@ export const App: React.FC = () => {
       {hud.phase === 'TITLE' && activeModal === 'heroes' && (
         <HeroesModal
           profile={profile}
-          onEquip={(heroId, compId) => actions.equipLoadout(heroId, compId)}
-          onBuyCharacter={(itemType, itemId, currency, cost) =>
-            actions.purchaseShopItem(itemType, itemId, currency, cost)
-          }
+          onEquip={(heroId, compId) => {
+            engineRef.current?.playUiSound();
+            actions.equipLoadout(heroId, compId);
+          }}
+          onBuyCharacter={(itemType, itemId, currency, cost) => {
+            engineRef.current?.playUnlockSound();
+            actions.purchaseShopItem(itemType, itemId, currency, cost);
+          }}
           onClose={() => setActiveModal(null)}
         />
       )}

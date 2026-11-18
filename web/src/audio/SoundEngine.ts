@@ -1,8 +1,31 @@
+const SFX_PATHS = {
+  coin: './assets/audio/coin.mp3',
+  jump: './assets/audio/jump.mp3',
+  slide: './assets/audio/slide.mp3',
+  dodge: './assets/audio/dodge.mp3',
+  land: './assets/audio/land.mp3',
+  bump: './assets/audio/bump.mp3',
+  crash: './assets/audio/crash.mp3',
+  powerup: './assets/audio/powerup.mp3',
+  powerdown: './assets/audio/powerdown.mp3',
+  trainPass: './assets/audio/train_pass.mp3',
+  start: './assets/audio/start.mp3',
+  chestOpen: './assets/audio/chest_open.mp3',
+  uiTap: './assets/audio/ui_tap.mp3',
+  uiCash: './assets/audio/ui_cash.mp3',
+  unlock: './assets/audio/unlock.mp3',
+  turbo: './assets/audio/turbo.mp3',
+} as const;
+
+type SfxKey = keyof typeof SFX_PATHS;
+
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private muted: boolean;
   private coinCombo = 0;
   private lastCoinAt = 0;
+  private readonly buffers = new Map<SfxKey, AudioBuffer>();
+  private loadingStarted = false;
 
   constructor(initialMuted: boolean) {
     this.muted = initialMuted;
@@ -22,6 +45,26 @@ export class SoundEngine {
     if (ctx && ctx.state === 'suspended') {
       void ctx.resume();
     }
+    if (ctx && !this.loadingStarted) {
+      this.loadingStarted = true;
+      this.preloadAll(ctx);
+    }
+  }
+
+  private preloadAll(ctx: AudioContext): void {
+    if (typeof fetch !== 'function') return;
+    const entries = Object.entries(SFX_PATHS) as Array<[SfxKey, string]>;
+    for (const [key, url] of entries) {
+      void fetch(url)
+        .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('HTTP error'))))
+        .then((buf) => ctx.decodeAudioData(buf))
+        .then((decoded) => {
+          this.buffers.set(key, decoded);
+        })
+        .catch(() => {
+          // Keep silent synthesis fallback if audio decoding fails in headless/restricted modes
+        });
+    }
   }
 
   private ensureContext(): AudioContext | null {
@@ -39,12 +82,28 @@ export class SoundEngine {
     return this.ctx;
   }
 
+  private playBuffer(key: SfxKey, volume = 0.5, playbackRate = 1.0): boolean {
+    const ctx = this.ensureContext();
+    if (!ctx) return false;
+    const buf = this.buffers.get(key);
+    if (!buf) return false;
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = playbackRate;
+    const gain = ctx.createGain();
+    gain.gain.value = volume;
+    src.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(0);
+    return true;
+  }
+
   public playStart(): void {
+    if (this.playBuffer('start', 0.55)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-
-    // Deep taiko pulse + ascending chime
     this.tone(ctx, 110, 52, 0.24, 'sine', 0.28, now);
     this.tone(ctx, 523.25, 523.25, 0.14, 'triangle', 0.12, now + 0.04);
     this.tone(ctx, 659.25, 659.25, 0.18, 'triangle', 0.12, now + 0.11);
@@ -52,6 +111,7 @@ export class SoundEngine {
   }
 
   public playLaneSwitch(): void {
+    if (this.playBuffer('dodge', 0.36)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -59,6 +119,7 @@ export class SoundEngine {
   }
 
   public playJump(): void {
+    if (this.playBuffer('jump', 0.45)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -67,10 +128,15 @@ export class SoundEngine {
   }
 
   public playSlide(): void {
+    if (this.playBuffer('slide', 0.44)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
     this.tone(ctx, 420, 145, 0.16, 'sawtooth', 0.065, now);
+  }
+
+  public playLand(): void {
+    this.playBuffer('land', 0.32);
   }
 
   public playCoin(): void {
@@ -84,7 +150,8 @@ export class SoundEngine {
     }
     this.lastCoinAt = now;
 
-    // Japanese pentatonic steps (C5, D5, E5, G5, A5, C6, D6, E6)
+    if (this.playBuffer('coin', 0.36, 1 + this.coinCombo * 0.04)) return;
+
     const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
     const freq = scale[this.coinCombo] ?? 1046.5;
     this.tone(ctx, freq, freq * 1.015, 0.11, 'sine', 0.13, now);
@@ -92,6 +159,7 @@ export class SoundEngine {
   }
 
   public playBump(): void {
+    if (this.playBuffer('bump', 0.5)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -100,6 +168,7 @@ export class SoundEngine {
   }
 
   public playCrash(): void {
+    if (this.playBuffer('crash', 0.6)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -109,6 +178,7 @@ export class SoundEngine {
   }
 
   public playPowerup(): void {
+    if (this.playBuffer('powerup', 0.5)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -116,7 +186,25 @@ export class SoundEngine {
     this.tone(ctx, 660, 1320, 0.2, 'sine', 0.12, now + 0.06);
   }
 
+  public playPowerdown(): void {
+    if (this.playBuffer('powerdown', 0.42)) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 620, 220, 0.22, 'triangle', 0.12, now);
+  }
+
+  public playCarTurbo(): void {
+    if (this.playBuffer('turbo', 0.45)) return;
+    this.playPowerup();
+  }
+
+  public playTrainPass(): void {
+    this.playBuffer('trainPass', 0.36);
+  }
+
   public playShieldBreak(): void {
+    if (this.playBuffer('powerdown', 0.5)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -125,6 +213,7 @@ export class SoundEngine {
   }
 
   public playChestOpen(): void {
+    if (this.playBuffer('chestOpen', 0.55)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -134,10 +223,21 @@ export class SoundEngine {
   }
 
   public playUiTap(): void {
+    if (this.playBuffer('uiTap', 0.42)) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
     this.tone(ctx, 620, 780, 0.055, 'sine', 0.06, now);
+  }
+
+  public playUiCash(): void {
+    if (this.playBuffer('uiCash', 0.48)) return;
+    this.playChestOpen();
+  }
+
+  public playUnlock(): void {
+    if (this.playBuffer('unlock', 0.55)) return;
+    this.playChestOpen();
   }
 
   private tone(
@@ -190,6 +290,7 @@ export class SoundEngine {
   }
 
   public dispose(): void {
+    this.buffers.clear();
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;

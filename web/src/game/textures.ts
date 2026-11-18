@@ -654,96 +654,264 @@ export function createNeonSignTexture(
 }
 
 /* ================================================================== */
-/* Festival cart textures (replace the old trains)                       */
+/* Metro Train textures (Blue & White commuter style per reference)    */
 /* ================================================================== */
 
-export function createFestivalCartSideTexture(): THREE.CanvasTexture {
+export function createRushTrainSideTexture(): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(512, 256);
   if (ctx) {
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#d63a28');
-    g.addColorStop(1, '#8e1a14');
-    ctx.fillStyle = g;
+    // Sleek pearl-white / cool grey carriage upper body
+    const bodyGrad = ctx.createLinearGradient(0, 0, 0, 256);
+    bodyGrad.addColorStop(0, '#e2e8f0');
+    bodyGrad.addColorStop(0.12, '#f8fafc');
+    bodyGrad.addColorStop(0.76, '#e2e8f0');
+    bodyGrad.addColorStop(0.78, '#1e293b');
+    bodyGrad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = bodyGrad;
     ctx.fillRect(0, 0, 512, 256);
-    // gold trim
-    ctx.fillStyle = '#e9b949';
-    ctx.fillRect(0, 0, 512, 14);
-    ctx.fillRect(0, 242, 512, 14);
-    ctx.fillRect(0, 118, 512, 6);
-    // carved panels with sakura crests
-    for (let i = 0; i < 4; i++) {
-      const x = 22 + i * 122;
-      ctx.strokeStyle = '#f4d27a';
-      ctx.lineWidth = 4;
-      roundRect(ctx, x, 34, 100, 74, 8);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(40,6,4,0.45)';
-      roundRect(ctx, x + 4, 38, 92, 66, 6);
-      ctx.fill();
-      ctx.fillStyle = '#ffd3e6';
-      for (let p = 0; p < 5; p++) {
-        const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
+
+    // Bold royal blue mid-body band (iconic reference blue stripe)
+    const blueGrad = ctx.createLinearGradient(0, 126, 0, 166);
+    blueGrad.addColorStop(0, '#2563eb');
+    blueGrad.addColorStop(0.5, '#1d4ed8');
+    blueGrad.addColorStop(1, '#1e40af');
+    ctx.fillStyle = blueGrad;
+    ctx.fillRect(0, 128, 512, 34);
+
+    // Thin silver accent pinstripe
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillRect(0, 125, 512, 3);
+    ctx.fillRect(0, 162, 512, 2);
+
+    // Passenger doors & dark tinted side windows
+    const bays = [24, 152, 280, 408];
+    for (let i = 0; i < bays.length; i++) {
+      const bx = bays[i];
+      if (i % 2 === 0) {
+        // Double sliding commuter door
+        ctx.fillStyle = '#cbd5e1';
+        roundRect(ctx, bx, 28, 84, 174, 6);
+        ctx.fill();
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 3;
+        ctx.stroke();
         ctx.beginPath();
-        ctx.ellipse(x + 50 + Math.cos(a) * 14, 71 + Math.sin(a) * 14, 9, 6, a, 0, Math.PI * 2);
+        ctx.moveTo(bx + 42, 28);
+        ctx.lineTo(bx + 42, 202);
+        ctx.stroke();
+        // Door windows
+        for (const dx of [bx + 8, bx + 48]) {
+          ctx.fillStyle = '#1e293b';
+          roundRect(ctx, dx, 42, 28, 66, 4);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+          ctx.fillRect(dx + 4, 46, 8, 56);
+        }
+      } else {
+        // Wide dark glass passenger window
+        ctx.fillStyle = '#0f172a';
+        roundRect(ctx, bx, 40, 102, 74, 8);
+        ctx.fill();
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // Specular diagonal glass sheen
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.25)';
+        ctx.beginPath();
+        ctx.moveTo(bx + 12, 44);
+        ctx.lineTo(bx + 38, 44);
+        ctx.lineTo(bx + 22, 110);
+        ctx.lineTo(bx + 4, 110);
+        ctx.closePath();
         ctx.fill();
       }
-      ctx.fillStyle = '#f4d27a';
-      ctx.beginPath();
-      ctx.arc(x + 50, 71, 5, 0, Math.PI * 2);
+    }
+
+    // Metallic undercarriage vents
+    ctx.fillStyle = '#334155';
+    for (let vx = 18; vx < 490; vx += 44) {
+      roundRect(ctx, vx, 212, 32, 32, 3);
       ctx.fill();
     }
-    // kohaku curtain band
-    for (let i = 0; i < 16; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#fdf6ea' : '#d02b2b';
-      ctx.fillRect(i * 32, 140, 32, 76);
-    }
-    ctx.fillStyle = '#1b1020';
-    ctx.font = '900 54px "Noto Serif JP", serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('祭', 256, 178);
   }
-  return toTexture(canvas);
+  return toTexture(canvas, { anisotropy: 8 });
 }
 
-export function createFestivalCartFrontTexture(): THREE.CanvasTexture {
+export function createRushTrainFrontTexture(): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(256, 256);
   if (ctx) {
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#d63a28');
-    g.addColorStop(1, '#8e1a14');
-    ctx.fillStyle = g;
+    // Silver roof crown + metallic bumper base
+    ctx.fillStyle = '#e2e8f0';
     ctx.fillRect(0, 0, 256, 256);
-    ctx.strokeStyle = '#f2cf72';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(10, 10, 236, 236);
-    ctx.fillStyle = '#fdf6ea';
-    ctx.beginPath();
-    ctx.arc(128, 118, 66, 0, Math.PI * 2);
+
+    // Royal blue front mask matching Train reference sheet
+    const blueMask = ctx.createLinearGradient(0, 24, 0, 210);
+    blueMask.addColorStop(0, '#3b82f6');
+    blueMask.addColorStop(0.35, '#1d4ed8');
+    blueMask.addColorStop(1, '#1e3a8a');
+    ctx.fillStyle = blueMask;
+    roundRect(ctx, 14, 24, 228, 182, 18);
     ctx.fill();
-    ctx.fillStyle = '#f7a3c6';
-    for (let p = 0; p < 5; p++) {
-      const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
-      ctx.beginPath();
-      ctx.ellipse(128 + Math.cos(a) * 28, 118 + Math.sin(a) * 28, 20, 13, a, 0, Math.PI * 2);
+
+    // Panoramic 3-pane tinted windshield
+    ctx.fillStyle = '#0f172a';
+    roundRect(ctx, 30, 42, 196, 86, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#020617';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Windshield diagonal sheen
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.24)';
+    ctx.beginPath();
+    ctx.moveTo(46, 46);
+    ctx.lineTo(84, 46);
+    ctx.lineTo(58, 124);
+    ctx.lineTo(36, 124);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(92, 42, 4, 86);
+    ctx.fillRect(160, 42, 4, 86);
+
+    // Glowing square yellow twin headlights
+    for (const hx of [40, 186]) {
+      ctx.fillStyle = '#fef08a';
+      roundRect(ctx, hx, 152, 30, 24, 5);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, hx + 6, 157, 18, 14, 3);
       ctx.fill();
     }
-    ctx.fillStyle = '#e9b949';
-    ctx.beginPath();
-    ctx.arc(128, 118, 9, 0, Math.PI * 2);
+
+    // Center destination LED badge
+    ctx.fillStyle = '#020617';
+    roundRect(ctx, 96, 156, 64, 18, 4);
     ctx.fill();
-    ctx.fillStyle = '#fdf6ea';
-    ctx.font = '900 40px "Noto Serif JP", serif';
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('疾走', 128, 214);
+    ctx.fillText('RUSH', 128, 165);
+
+    // Undercarriage bumper & coupler
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 208, 256, 48);
+    ctx.fillStyle = '#475569';
+    roundRect(ctx, 104, 214, 48, 28, 4);
+    ctx.fill();
   }
-  return toTexture(canvas);
+  return toTexture(canvas, { anisotropy: 8 });
 }
 
-/* Deprecated aliases kept so older imports keep compiling */
-export const createRushTrainSideTexture = createFestivalCartSideTexture;
-export const createRushTrainFrontTexture = createFestivalCartFrontTexture;
+export const createFestivalCartSideTexture = createRushTrainSideTexture;
+export const createFestivalCartFrontTexture = createRushTrainFrontTexture;
+
+/* ================================================================== */
+/* Brick Wall & Ornate Archway + Uploaded Atlas Loaders                 */
+/* ================================================================== */
+
+export function createBrickWallTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (ctx) {
+    const rand = rng(7711);
+    ctx.fillStyle = '#d6c7b8'; // warm cream mortar
+    ctx.fillRect(0, 0, size, size);
+
+    const rows = 12;
+    const cols = 6;
+    const rowH = size / rows;
+    const colW = size / cols;
+    const palette = ['#9a2e22', '#b23b2a', '#8c281d', '#c24833', '#a33325'];
+
+    for (let r = 0; r < rows; r++) {
+      const offset = (r % 2) * (colW * 0.5);
+      for (let c = -1; c <= cols; c++) {
+        const bx = c * colW + offset;
+        const by = r * rowH;
+        const m = 4;
+        ctx.fillStyle = palette[Math.floor(rand() * palette.length)];
+        roundRect(ctx, bx + m, by + m, colW - m * 2, rowH - m * 2, 4);
+        ctx.fill();
+
+        // Top highlight + bottom shadow
+        ctx.fillStyle = 'rgba(255, 220, 195, 0.16)';
+        ctx.fillRect(bx + m + 2, by + m + 1, colW - m * 2 - 4, 3);
+        ctx.fillStyle = 'rgba(20, 5, 5, 0.24)';
+        ctx.fillRect(bx + m + 2, by + rowH - m - 4, colW - m * 2 - 4, 3);
+      }
+    }
+  }
+  return toTexture(canvas, { repeat: true, anisotropy: 8 });
+}
+
+export function createOrnateArchTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = makeCanvas(256, 256);
+  if (ctx) {
+    const bg = ctx.createLinearGradient(0, 0, 256, 256);
+    bg.addColorStop(0, '#ec4899');
+    bg.addColorStop(0.5, '#f472b6');
+    bg.addColorStop(1, '#db2777');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Turquoise & gold ornate floral swirls matching reference image
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 8;
+    for (let y = 24; y < 256; y += 44) {
+      ctx.beginPath();
+      ctx.arc(64, y, 16, 0, Math.PI * 1.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(192, y + 14, 16, 0.4, Math.PI * 1.9);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(8, 8, 240, 240);
+  }
+  return toTexture(canvas, { repeat: true, anisotropy: 4 });
+}
+
+export function loadAtlasCropTexture(
+  atlasUrl: string,
+  sxRatio: number,
+  syRatio: number,
+  swRatio: number,
+  shRatio: number,
+  fallbackPainter: (ctx: CanvasRenderingContext2D, size: number) => void,
+  repeat = false,
+): THREE.CanvasTexture {
+  const size = 256;
+  const { canvas, ctx } = makeCanvas(size, size);
+  if (ctx) {
+    fallbackPainter(ctx, size);
+  }
+  const tex = toTexture(canvas, { repeat, anisotropy: 8 });
+
+  if (typeof Image !== 'undefined') {
+    const img = new Image();
+    img.onload = () => {
+      if (!ctx || img.width === 0 || img.height === 0) return;
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(
+        img,
+        img.width * sxRatio,
+        img.height * syRatio,
+        img.width * swRatio,
+        img.height * shRatio,
+        0,
+        0,
+        size,
+        size,
+      );
+      tex.needsUpdate = true;
+    };
+    img.src = atlasUrl;
+  }
+  return tex;
+}
 
 /* ================================================================== */
 /* Coin & petals                                                         */

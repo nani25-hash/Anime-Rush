@@ -4,7 +4,13 @@ export type QualityLevel = 'low' | 'medium' | 'high';
 
 export type LaneIndex = -1 | 0 | 1;
 
-export type ObstacleKind = 'LOW_BARRIER' | 'HIGH_BEAM' | 'FULL_PILLAR' | 'MOVING_CART';
+export type ObstacleKind =
+  | 'LOW_BARRIER'
+  | 'HIGH_BEAM'
+  | 'FULL_PILLAR'
+  | 'MOVING_CART'
+  | 'WALL_GATE_1'
+  | 'WALL_GATE_2';
 
 export type BottomTab = 'home' | 'heroes' | 'shop' | 'pass';
 
@@ -23,6 +29,23 @@ export type ActiveModal =
   | 'inbox'
   | 'settings'
   | 'chest_reward';
+
+export type HeroPassiveType =
+  | 'COIN_BONUS'
+  | 'MAGNET_DURATION'
+  | 'SCORE_BOOST'
+  | 'FUEL_EFFICIENCY'
+  | 'START_SHIELD'
+  | 'SKILL_HASTE';
+
+export type HeroActiveEffect =
+  | 'SHIELD_SURGE'
+  | 'MAGNET_WAVE'
+  | 'SCORE_OVERDRIVE'
+  | 'SONIC_BLAST'
+  | 'FUEL_INJECT'
+  | 'SAKURA_BURST'
+  | 'SUPERNOVA';
 
 export interface ActiveRunBoosts {
   useMagnet: boolean;
@@ -61,6 +84,21 @@ export interface HudSnapshot {
   jumps: number;
   slides: number;
   headStartActive: boolean;
+  // Fuel & Open-Top Convertible Car Mode
+  fuelPct: number;
+  fuelCount: number;
+  fuelMax: number;
+  fuelReady: boolean;
+  carRemaining: number;
+  carActive: boolean;
+  // Dynamic Hero Power System
+  heroName: string;
+  heroPowerName: string;
+  heroPowerAccent: string;
+  heroPowerChargePct: number;
+  heroPowerReady: boolean;
+  heroPowerActiveRemaining: number;
+  heroPassiveSummary: string;
 }
 
 export interface PlayerProfile {
@@ -225,6 +263,10 @@ export const GAME_CONSTANTS = {
   MOVING_CART_TRIGGER_DIST: 52.0,
   COIN_SCORE_VALUE: 25,
   DISTANCE_SCORE_RATE: 10,
+  FUEL_MAX_UNITS: 100,
+  FUEL_CAN_UNITS: 20,
+  CAR_TURBO_DURATION_SEC: 10.0,
+  CAR_TURBO_SPEED: 30.5,
 } as const;
 
 const STORAGE_KEYS = {

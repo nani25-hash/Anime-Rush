@@ -240,7 +240,8 @@ export class ShibaCompanion {
     heroZ: number,
   ): void {
     const isTitle = animState === 'TITLE';
-    const targetX = heroX + (isTitle ? 0.92 : 0.96);
+    const isCar = animState === 'SEATED_CAR';
+    const targetX = heroX + (isTitle ? 0.92 : isCar ? 1.24 : 0.96);
     const targetY = heroY * 0.92;
     const followRate = 1 - Math.exp(-12.5 * dt);
     this.currentX = THREE.MathUtils.lerp(this.currentX, targetX, followRate);

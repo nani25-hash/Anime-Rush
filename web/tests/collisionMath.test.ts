@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { boxesOverlap, getRunnerAabb, isSideGrazeCollision } from '../src/game/collisionMath.ts';
+import {
+  boxesOverlap,
+  checkWallGateCollision,
+  getRunnerAabb,
+  isSideGrazeCollision,
+} from '../src/game/collisionMath.ts';
 
 test('standing runner collides with LOW_BARRIER, HIGH_BEAM, and FULL_PILLAR on same lane', () => {
   const standing = getRunnerAabb(0, 0, -20, false);
@@ -46,4 +51,38 @@ test('isSideGrazeCollision detects lateral edge graze only while switching lanes
 
   // Edge hit without active lane switch -> fatal crash
   assert.equal(isSideGrazeCollision(0.72, 0, 0.74, false), false);
+});
+
+test('checkWallGateCollision allows passage through single open archway lane and blocks brick lanes/lintel', () => {
+  const laneWidth = 2.35;
+  const openLanes = [-1] as const;
+
+  // Standing in left open lane passes cleanly
+  const openRunner = getRunnerAabb(-2.35, 0, -30, false);
+  assert.equal(checkWallGateCollision(openRunner, -30, 0.35, openLanes, laneWidth), false);
+
+  // Standing in center or right blocked brick lanes crashes
+  const centerRunner = getRunnerAabb(0, 0, -30, false);
+  const rightRunner = getRunnerAabb(2.35, 0, -30, false);
+  assert.equal(checkWallGateCollision(centerRunner, -30, 0.35, openLanes, laneWidth), true);
+  assert.equal(checkWallGateCollision(rightRunner, -30, 0.35, openLanes, laneWidth), true);
+
+  // Jumping too high inside the open lane hits the brick lintel (maxY = 1.1 + 1.72 = 2.82 > 2.65)
+  const highJumpRunner = getRunnerAabb(-2.35, 1.1, -30, false);
+  assert.equal(checkWallGateCollision(highJumpRunner, -30, 0.35, openLanes, laneWidth), true);
+});
+
+test('checkWallGateCollision allows passage across two-lane archway including center boundary', () => {
+  const laneWidth = 2.35;
+  const openLanes = [0, 1] as const;
+
+  const centerRunner = getRunnerAabb(0, 0, -30, false);
+  const betweenOpenLanesRunner = getRunnerAabb(1.2, 0, -30, false);
+  const rightRunner = getRunnerAabb(2.35, 0, -30, false);
+  const blockedLeftRunner = getRunnerAabb(-2.35, 0, -30, false);
+
+  assert.equal(checkWallGateCollision(centerRunner, -30, 0.35, openLanes, laneWidth), false);
+  assert.equal(checkWallGateCollision(betweenOpenLanesRunner, -30, 0.35, openLanes, laneWidth), false);
+  assert.equal(checkWallGateCollision(rightRunner, -30, 0.35, openLanes, laneWidth), false);
+  assert.equal(checkWallGateCollision(blockedLeftRunner, -30, 0.35, openLanes, laneWidth), true);
 });
