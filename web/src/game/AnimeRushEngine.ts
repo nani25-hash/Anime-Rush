@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { SoundEngine } from '../audio/SoundEngine';
-import { HeroDefinition, getHeroById } from '../config/catalog';
+import { CarDefinition, HeroDefinition, getCarById, getHeroById } from '../config/catalog';
 import {
   ActiveRunBoosts,
   GAME_CONSTANTS,
@@ -52,8 +52,9 @@ export class AnimeRushEngine {
   private rafId: number | null = null;
   private lastFrameMs = 0;
 
-  // Equipped hero & companion profile
+  // Equipped hero, companion & convertible car profile
   private equippedHero: HeroDefinition = getHeroById('ryu');
+  private equippedCar: CarDefinition = getCarById('yellow_cab_gt');
 
   // Runner physics & stamina state
   private targetLane: LaneIndex = 0;
@@ -232,10 +233,16 @@ export class AnimeRushEngine {
     this.sound.setMuted(muted);
   }
 
-  public setLoadout(heroId: string, companionId: string): void {
+  public setLoadout(
+    heroId: string,
+    companionId: string,
+    carId = 'yellow_cab_gt',
+  ): void {
     this.equippedHero = getHeroById(heroId);
+    this.equippedCar = getCarById(carId);
     this.runner.setSkin(heroId);
     this.shiba.setSkin(companionId);
+    this.car.setCarModel(carId);
     this.emitHud();
   }
 
@@ -282,14 +289,18 @@ export class AnimeRushEngine {
     this.sound.unlock();
     this.sound.playCarTurbo();
     this.fuelUnits = 0;
-    this.carRemaining = GAME_CONSTANTS.CAR_TURBO_DURATION_SEC;
+    const totalDuration =
+      GAME_CONSTANTS.CAR_TURBO_DURATION_SEC + this.equippedCar.extraDurationSec;
+    this.carRemaining = totalDuration;
+    this.sakuraTokens += this.equippedCar.sakuraOnActivate;
     this.slideTimer = 0;
     this.staminaLife = 2;
     this.lifeRegenTimer = 0;
+    this.car.setCarModel(this.equippedCar.id);
     this.car.setVisible(true);
-    this.pools.emitBurstPublic(this.runnerX, 0.8, this.runnerZ, 24, 0xf97316);
+    this.pools.emitBurstPublic(this.runnerX, 0.8, this.runnerZ, 24, this.equippedCar.neonHex);
     this.shakeIntensity = 0.25;
-    this.milestoneLabel = 'CABRIOLET TURBO 10s !';
+    this.milestoneLabel = `${this.equippedCar.name.toUpperCase()} ${Math.round(totalDuration)}s !`;
     this.milestoneTimer = 1.6;
     this.emitHud();
   }
@@ -638,7 +649,10 @@ export class AnimeRushEngine {
 
     // Speed Progression
     if (this.carRemaining > 0) {
-      this.worldSpeed = Math.max(this.worldSpeed, GAME_CONSTANTS.CAR_TURBO_SPEED);
+      this.worldSpeed = Math.max(
+        this.worldSpeed,
+        GAME_CONSTANTS.CAR_TURBO_SPEED + this.equippedCar.turboSpeedBonus,
+      );
     } else if (this.headStartTimer > 0) {
       this.headStartTimer = Math.max(0, this.headStartTimer - dt);
       this.worldSpeed = 27.5;
@@ -773,8 +787,9 @@ export class AnimeRushEngine {
       );
 
     if (coinsCollected > 0) {
+      const carCoinRate = isCarActive ? this.equippedCar.coinBonusRate : 0;
       const coinBonusRate =
-        passive.passiveType === 'COIN_BONUS' ? passive.passiveValue : 0;
+        (passive.passiveType === 'COIN_BONUS' ? passive.passiveValue : 0) + carCoinRate;
       this.coinBonusAccumulator += coinsCollected * coinBonusRate;
       const bonusWhole = Math.floor(this.coinBonusAccumulator);
       this.coinBonusAccumulator -= bonusWhole;
@@ -823,8 +838,9 @@ export class AnimeRushEngine {
       this.sound.playPowerup();
     }
 
+    const carScoreBonus = isCarActive ? this.equippedCar.scoreBonusRate : 0;
     const scorePassiveBonus =
-      passive.passiveType === 'SCORE_BOOST' ? 1 + passive.passiveValue : 1;
+      (passive.passiveType === 'SCORE_BOOST' ? 1 + passive.passiveValue : 1) + carScoreBonus;
     const effectiveMultiplier = this.scoreMultiplier * this.overdriveMultFactor;
     this.score = Math.floor(
       (this.distance * GAME_CONSTANTS.DISTANCE_SCORE_RATE +
@@ -1059,6 +1075,7 @@ export class AnimeRushEngine {
       fuelReady: this.fuelUnits >= GAME_CONSTANTS.FUEL_MAX_UNITS && this.carRemaining <= 0,
       carRemaining: Math.ceil(this.carRemaining),
       carActive: this.carRemaining > 0,
+      carName: this.equippedCar.name,
       heroName: this.equippedHero.name,
       heroPowerName: spec.activeName,
       heroPowerAccent: this.equippedHero.uiAccent,

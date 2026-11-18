@@ -1,13 +1,29 @@
-import React, { useMemo, useState } from 'react';
-import { COMPANION_CATALOG, HERO_CATALOG } from '../config/catalog';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CAR_CATALOG,
+  COMPANION_CATALOG,
+  HERO_CATALOG,
+  getCarById,
+  getCompanionById,
+  getHeroById,
+} from '../config/catalog';
+import { PreviewMode, PreviewStage3D } from '../game/PreviewStage3D';
 import { PlayerProfile } from '../types/game';
-import { BoltIcon, CloseIcon, CoinIcon, GemIcon, ShieldIcon } from './Icons';
+import {
+  BoltIcon,
+  CarIcon,
+  CloseIcon,
+  CoinIcon,
+  GemIcon,
+  ShieldIcon,
+} from './Icons';
 
 interface HeroesModalProps {
   profile: PlayerProfile;
   onEquip: (heroId: string, companionId: string) => void;
+  onEquipCar: (carId: string) => void;
   onBuyCharacter: (
-    itemType: 'hero' | 'companion',
+    itemType: 'hero' | 'companion' | 'car',
     itemId: string,
     currency: 'coins' | 'gems',
     cost: number,
@@ -15,7 +31,13 @@ interface HeroesModalProps {
   onClose: () => void;
 }
 
-type HeroFilter = 'Tous' | 'Canoniques' | 'Actuels' | 'Spécial 3D' | 'Nouveaux' | 'Débloqués';
+type HeroFilter =
+  | 'Tous'
+  | 'Canoniques'
+  | 'Actuels'
+  | 'Spécial 3D'
+  | 'Nouveaux'
+  | 'Débloqués';
 
 const HERO_FILTERS: HeroFilter[] = [
   'Tous',
@@ -29,217 +51,537 @@ const HERO_FILTERS: HeroFilter[] = [
 export const HeroesModal: React.FC<HeroesModalProps> = ({
   profile,
   onEquip,
+  onEquipCar,
   onBuyCharacter,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'heroes' | 'companions'>('heroes');
+  const [subTab, setSubTab] = useState<PreviewMode>('heroes');
+  const [previewHeroId, setPreviewHeroId] = useState<string>(profile.equippedHeroId);
+  const [previewCarId, setPreviewCarId] = useState<string>(profile.equippedCarId);
+  const [previewCompId, setPreviewCompId] = useState<string>(profile.equippedCompanionId);
   const [filter, setFilter] = useState<HeroFilter>('Tous');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stageRef = useRef<PreviewStage3D | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let stage: PreviewStage3D | null = null;
+    try {
+      stage = new PreviewStage3D(
+        canvas,
+        {
+          mode: subTab,
+          heroId: previewHeroId,
+          carId: previewCarId,
+          companionId: previewCompId,
+        },
+        (thumbs) => setThumbnails(thumbs),
+      );
+      stageRef.current = stage;
+    } catch {
+      stageRef.current = null;
+    }
+
+    const parent = canvas.parentElement;
+    const ro =
+      typeof ResizeObserver !== 'undefined' && parent
+        ? new ResizeObserver(() => {
+            stageRef.current?.resizeToContainer();
+          })
+        : null;
+    if (ro && parent) {
+      ro.observe(parent);
+    }
+
+    return () => {
+      ro?.disconnect();
+      stage?.dispose();
+      stageRef.current = null;
+    };
+    // Mounted once per modal lifecycle; subsequent preview switches flow via setSelection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    stageRef.current?.setSelection({
+      mode: subTab,
+      heroId: previewHeroId,
+      carId: previewCarId,
+      companionId: previewCompId,
+    });
+  }, [subTab, previewHeroId, previewCarId, previewCompId]);
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const filteredHeroes = useMemo(() => {
-    if (filter === 'Tous') return HERO_CATALOG;
-    if (filter === 'Débloqués') {
-      return HERO_CATALOG.filter((h) => profile.unlockedHeroIds.includes(h.id));
+    return HERO_CATALOG.filter((h) => {
+      if (filter === 'Débloqués' && !profile.unlockedHeroIds.includes(h.id)) {
+        return false;
+      }
+      if (filter !== 'Tous' && filter !== 'Débloqués' && h.category !== filter) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
+      return (
+        h.name.toLowerCase().includes(normalizedQuery) ||
+        h.title.toLowerCase().includes(normalizedQuery) ||
+        h.power.activeName.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [filter, normalizedQuery, profile.unlockedHeroIds]);
+
+  const filteredCars = useMemo(() => {
+    if (!normalizedQuery) return CAR_CATALOG;
+    return CAR_CATALOG.filter(
+      (c) =>
+        c.name.toLowerCase().includes(normalizedQuery) ||
+        c.subtitle.toLowerCase().includes(normalizedQuery) ||
+        c.perkLabel.toLowerCase().includes(normalizedQuery),
+    );
+  }, [normalizedQuery]);
+
+  const activeMultiplier =
+    profile.activeMultiplier > 1 && profile.multiplierExpiresAt > Date.now()
+      ? profile.activeMultiplier
+      : 1;
+
+  const selectedHero = getHeroById(previewHeroId);
+  const selectedCar = getCarById(previewCarId);
+  const selectedComp = getCompanionById(previewCompId);
+
+  const activeItemState = useMemo(() => {
+    if (subTab === 'heroes') {
+      const unlocked = profile.unlockedHeroIds.includes(selectedHero.id);
+      const equipped = profile.equippedHeroId === selectedHero.id;
+      const affordable =
+        selectedHero.currency === 'coins'
+          ? profile.coins >= selectedHero.cost
+          : profile.gems >= selectedHero.cost;
+      return {
+        type: 'hero' as const,
+        id: selectedHero.id,
+        name: selectedHero.name,
+        subtitle: `${selectedHero.title} · ${selectedHero.category}`,
+        rarity: selectedHero.rarity,
+        accent: selectedHero.uiAccent,
+        currency: selectedHero.currency,
+        cost: selectedHero.cost,
+        unlocked,
+        equipped,
+        affordable,
+        pillOne: selectedHero.power.passiveLabel,
+        pillTwo: `${selectedHero.power.activeName} : ${selectedHero.power.activeDescription}`,
+      };
     }
-    return HERO_CATALOG.filter((h) => h.category === filter);
-  }, [filter, profile.unlockedHeroIds]);
+
+    if (subTab === 'cars') {
+      const unlocked = profile.unlockedCarIds.includes(selectedCar.id);
+      const equipped = profile.equippedCarId === selectedCar.id;
+      const affordable =
+        selectedCar.currency === 'coins'
+          ? profile.coins >= selectedCar.cost
+          : profile.gems >= selectedCar.cost;
+      return {
+        type: 'car' as const,
+        id: selectedCar.id,
+        name: selectedCar.name,
+        subtitle: selectedCar.subtitle,
+        rarity: selectedCar.rarity,
+        accent: selectedCar.uiAccent,
+        currency: selectedCar.currency,
+        cost: selectedCar.cost,
+        unlocked,
+        equipped,
+        affordable,
+        pillOne: selectedCar.perkLabel,
+        pillTwo: selectedCar.description,
+      };
+    }
+
+    const unlocked = profile.unlockedCompanionIds.includes(selectedComp.id);
+    const equipped = profile.equippedCompanionId === selectedComp.id;
+    const affordable =
+      selectedComp.currency === 'coins'
+        ? profile.coins >= selectedComp.cost
+        : profile.gems >= selectedComp.cost;
+    return {
+      type: 'companion' as const,
+      id: selectedComp.id,
+      name: selectedComp.name,
+      subtitle: selectedComp.title,
+      rarity: selectedComp.rarity,
+      accent: selectedComp.uiAccent,
+      currency: selectedComp.currency,
+      cost: selectedComp.cost,
+      unlocked,
+      equipped,
+      affordable,
+      pillOne: selectedComp.bonusLabel,
+      pillTwo: selectedComp.description,
+    };
+  }, [
+    subTab,
+    selectedHero,
+    selectedCar,
+    selectedComp,
+    profile.unlockedHeroIds,
+    profile.equippedHeroId,
+    profile.unlockedCarIds,
+    profile.equippedCarId,
+    profile.unlockedCompanionIds,
+    profile.equippedCompanionId,
+    profile.coins,
+    profile.gems,
+  ]);
+
+  const handlePrimaryAction = () => {
+    if (activeItemState.equipped) return;
+    if (activeItemState.unlocked) {
+      if (activeItemState.type === 'hero') {
+        onEquip(activeItemState.id, profile.equippedCompanionId);
+      } else if (activeItemState.type === 'car') {
+        onEquipCar(activeItemState.id);
+      } else {
+        onEquip(profile.equippedHeroId, activeItemState.id);
+      }
+      return;
+    }
+    if (!activeItemState.affordable) return;
+    onBuyCharacter(
+      activeItemState.type,
+      activeItemState.id,
+      activeItemState.currency,
+      activeItemState.cost,
+    );
+  };
 
   return (
-    <div className="sheet-backdrop interactive" onClick={onClose}>
-      <div className="sheet-card" onClick={(e) => e.stopPropagation()} data-testid="heroes-modal">
-        <div className="sheet-header">
-          <div>
-            <h2 className="sheet-title">PERSONNAGES & POUVOIRS ({HERO_CATALOG.length})</h2>
-            <p className="sheet-sub">Bonus passif unique + pouvoir actif rechargeable en course</p>
+    <div className="showroom-overlay interactive" data-testid="heroes-modal">
+      <div className="showroom-shell">
+        {/* Top Navy Resource Header */}
+        <header className="showroom-topbar">
+          <div className="showroom-currencies">
+            <span className="showroom-pill tabular">
+              <CoinIcon size={16} />
+              <span>{profile.coins.toLocaleString('fr-FR')}</span>
+            </span>
+            <span className="showroom-pill gems tabular">
+              <GemIcon size={16} />
+              <span>{profile.gems.toLocaleString('fr-FR')}</span>
+            </span>
+            <span className="showroom-mult-pill tabular">x{activeMultiplier}</span>
           </div>
-          <button type="button" className="sheet-close" onClick={onClose} aria-label="Fermer">
-            <CloseIcon size={20} />
-          </button>
-        </div>
+          <div className="showroom-equipped-summary">
+            <CarIcon size={15} />
+            <span>{getCarById(profile.equippedCarId).name}</span>
+          </div>
+        </header>
 
-        <div className="sheet-tabs">
-          <button
-            type="button"
-            className={`sheet-tab ${subTab === 'heroes' ? 'active' : ''}`}
-            onClick={() => setSubTab('heroes')}
-          >
-            HÉROS 3D ({HERO_CATALOG.length})
-          </button>
-          <button
-            type="button"
-            className={`sheet-tab ${subTab === 'companions' ? 'active' : ''}`}
-            onClick={() => setSubTab('companions')}
-          >
-            SHIBA ({COMPANION_CATALOG.length})
-          </button>
-        </div>
-
-        {subTab === 'heroes' && (
-          <div className="hero-filter-strip">
-            {HERO_FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={`filter-chip ${filter === f ? 'active' : ''}`}
-                onClick={() => setFilter(f)}
+        {/* Upper Interactive 3D Brick Showroom */}
+        <section className="showroom-stage">
+          <div className="showroom-title-block">
+            <div className="showroom-name-row">
+              <h2 className="showroom-item-title">{activeItemState.name}</h2>
+              <span
+                className="showroom-rarity-chip"
+                style={{ borderColor: activeItemState.accent, color: activeItemState.accent }}
               >
-                {f === 'Tous' ? `Tous (${HERO_CATALOG.length})` : f}
-              </button>
-            ))}
+                {activeItemState.rarity}
+              </span>
+            </div>
+            <p className="showroom-item-sub">{activeItemState.subtitle}</p>
           </div>
-        )}
 
-        <div className="sheet-scroll">
-          {subTab === 'heroes' ? (
-            <div className="cards-list">
+          <div className="showroom-canvas-zone">
+            <canvas ref={canvasRef} className="showroom-canvas" />
+            <span className="showroom-drag-hint">Glisser 360°</span>
+
+            <div className="showroom-info-badges">
+              <div className="showroom-perk-pill passive">
+                <ShieldIcon size={13} />
+                <span>{activeItemState.pillOne}</span>
+              </div>
+              <div className="showroom-perk-pill active">
+                <BoltIcon size={13} />
+                <span>{activeItemState.pillTwo}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="showroom-cta-wrap">
+            {activeItemState.equipped ? (
+              <button
+                type="button"
+                className="showroom-cta-btn cta-equipped"
+                disabled
+                data-testid={`equipped-${activeItemState.type}-${activeItemState.id}`}
+              >
+                ÉQUIPÉ ✓
+              </button>
+            ) : activeItemState.unlocked ? (
+              <button
+                type="button"
+                className="showroom-cta-btn cta-select"
+                onClick={handlePrimaryAction}
+                data-testid={`equip-${activeItemState.type}-${activeItemState.id}`}
+              >
+                SÉLECTIONNER
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`showroom-cta-btn cta-buy ${activeItemState.affordable ? '' : 'disabled'}`}
+                disabled={!activeItemState.affordable}
+                onClick={handlePrimaryAction}
+                data-testid={`buy-${activeItemState.type}-${activeItemState.id}`}
+              >
+                <span>ACHETER</span>
+                {activeItemState.currency === 'coins' ? (
+                  <CoinIcon size={18} />
+                ) : (
+                  <GemIcon size={18} />
+                )}
+                <span className="tabular">{activeItemState.cost.toLocaleString('fr-FR')}</span>
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Search & Filter Strip */}
+        <section className="showroom-controls-bar">
+          {subTab !== 'companions' ? (
+            <div className="showroom-search-row">
+              <input
+                type="search"
+                className="showroom-search-input"
+                placeholder={
+                  subTab === 'heroes' ? 'Rechercher un héros...' : 'Rechercher une voiture...'
+                }
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Rechercher"
+              />
+            </div>
+          ) : null}
+
+          {subTab === 'heroes' && (
+            <div className="showroom-filter-strip">
+              {HERO_FILTERS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`showroom-filter-chip ${filter === f ? 'active' : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f === 'Tous' ? `Tous (${HERO_CATALOG.length})` : f}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Lower Dotted Studio Thumbnail Grid */}
+        <section className="showroom-grid-panel">
+          {subTab === 'heroes' && (
+            <div className="portrait-grid">
               {filteredHeroes.map((hero) => {
                 const unlocked = profile.unlockedHeroIds.includes(hero.id);
                 const equipped = profile.equippedHeroId === hero.id;
-                const affordable =
-                  hero.currency === 'coins'
-                    ? profile.coins >= hero.cost
-                    : profile.gems >= hero.cost;
+                const selected = previewHeroId === hero.id;
+                const thumb = thumbnails[`hero:${hero.id}`];
 
                 return (
-                  <div
+                  <button
                     key={hero.id}
-                    className={`character-card ${equipped ? 'equipped' : ''}`}
-                    style={{ borderColor: equipped ? hero.uiAccent : undefined }}
+                    type="button"
+                    className={`portrait-tile ${selected ? 'selected' : ''} ${equipped ? 'equipped' : ''} ${!unlocked ? 'locked' : ''}`}
+                    onClick={() => setPreviewHeroId(hero.id)}
+                    aria-label={hero.name}
+                    data-testid={`tile-hero-${hero.id}`}
                   >
-                    <div
-                      className="character-emblem"
-                      style={{
-                        borderColor: hero.uiAccent,
-                        background: `linear-gradient(135deg, ${hero.uiAccent}44, #0f172a)`,
-                      }}
-                    >
-                      <span>{hero.kanji}</span>
-                    </div>
-                    <div className="character-info">
-                      <div className="shop-name-row">
-                        <span className="shop-name">{hero.name}</span>
-                        <span className="rarity-pill" style={{ color: hero.uiAccent }}>
-                          {hero.rarity}
-                        </span>
-                        <span className="category-pill">{hero.category}</span>
-                      </div>
-                      <span className="char-title">{hero.title}</span>
-                      <p className="shop-desc">{hero.description}</p>
-                      <div className="hero-power-pills">
-                        <span className="power-badge passive">
-                          <ShieldIcon size={12} /> {hero.power.passiveLabel}
-                        </span>
-                        <span className="power-badge active-skill">
-                          <BoltIcon size={12} /> {hero.power.activeName} : {hero.power.activeDescription}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="character-action">
-                      {equipped ? (
-                        <span className="status-equipped">ÉQUIPÉ</span>
-                      ) : unlocked ? (
-                        <button
-                          type="button"
-                          className="action-btn-primary"
-                          onClick={() => onEquip(hero.id, profile.equippedCompanionId)}
-                          data-testid={`equip-hero-${hero.id}`}
-                        >
-                          ÉQUIPER
-                        </button>
+                    <div className="portrait-art">
+                      {thumb ? (
+                        <img src={thumb} alt={hero.name} className="portrait-img" />
                       ) : (
-                        <button
-                          type="button"
-                          className={`price-btn ${affordable ? '' : 'disabled'}`}
-                          disabled={!affordable}
-                          onClick={() =>
-                            onBuyCharacter('hero', hero.id, hero.currency, hero.cost)
-                          }
-                          data-testid={`buy-hero-${hero.id}`}
+                        <span
+                          className="portrait-fallback"
+                          style={{ color: hero.uiAccent }}
                         >
-                          {hero.currency === 'coins' ? (
-                            <CoinIcon size={15} />
-                          ) : (
-                            <GemIcon size={15} />
-                          )}
-                          <span className="tabular">{hero.cost}</span>
-                        </button>
+                          {hero.kanji}
+                        </span>
                       )}
                     </div>
-                  </div>
+                    <span className="portrait-name">{hero.name}</span>
+                    {unlocked ? (
+                      <span className={`portrait-check ${equipped ? 'active' : ''}`}>✓</span>
+                    ) : (
+                      <span className="portrait-price-tag tabular">
+                        {hero.currency === 'coins' ? (
+                          <CoinIcon size={11} />
+                        ) : (
+                          <GemIcon size={11} />
+                        )}
+                        {hero.cost}
+                      </span>
+                    )}
+                  </button>
                 );
               })}
+              {filteredHeroes.length === 0 && (
+                <div className="showroom-empty">Aucun héros trouvé pour cette recherche.</div>
+              )}
             </div>
-          ) : (
-            <div className="cards-list">
+          )}
+
+          {subTab === 'cars' && (
+            <div className="portrait-grid">
+              {filteredCars.map((car) => {
+                const unlocked = profile.unlockedCarIds.includes(car.id);
+                const equipped = profile.equippedCarId === car.id;
+                const selected = previewCarId === car.id;
+                const thumb = thumbnails[`car:${car.id}`];
+
+                return (
+                  <button
+                    key={car.id}
+                    type="button"
+                    className={`portrait-tile ${selected ? 'selected' : ''} ${equipped ? 'equipped' : ''} ${!unlocked ? 'locked' : ''}`}
+                    onClick={() => setPreviewCarId(car.id)}
+                    aria-label={car.name}
+                    data-testid={`tile-car-${car.id}`}
+                  >
+                    <div className="portrait-art">
+                      {thumb ? (
+                        <img src={thumb} alt={car.name} className="portrait-img" />
+                      ) : (
+                        <span className="portrait-fallback" style={{ color: car.uiAccent }}>
+                          <CarIcon size={28} />
+                        </span>
+                      )}
+                    </div>
+                    <span className="portrait-name">{car.name}</span>
+                    {unlocked ? (
+                      <span className={`portrait-check ${equipped ? 'active' : ''}`}>✓</span>
+                    ) : (
+                      <span className="portrait-price-tag tabular">
+                        {car.currency === 'coins' ? (
+                          <CoinIcon size={11} />
+                        ) : (
+                          <GemIcon size={11} />
+                        )}
+                        {car.cost}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {filteredCars.length === 0 && (
+                <div className="showroom-empty">Aucune voiture trouvée pour cette recherche.</div>
+              )}
+            </div>
+          )}
+
+          {subTab === 'companions' && (
+            <div className="portrait-grid">
               {COMPANION_CATALOG.map((comp) => {
                 const unlocked = profile.unlockedCompanionIds.includes(comp.id);
                 const equipped = profile.equippedCompanionId === comp.id;
-                const affordable =
-                  comp.currency === 'coins'
-                    ? profile.coins >= comp.cost
-                    : profile.gems >= comp.cost;
+                const selected = previewCompId === comp.id;
+                const thumb = thumbnails[`comp:${comp.id}`];
 
                 return (
-                  <div
+                  <button
                     key={comp.id}
-                    className={`character-card ${equipped ? 'equipped' : ''}`}
-                    style={{ borderColor: equipped ? comp.uiAccent : undefined }}
+                    type="button"
+                    className={`portrait-tile ${selected ? 'selected' : ''} ${equipped ? 'equipped' : ''} ${!unlocked ? 'locked' : ''}`}
+                    onClick={() => setPreviewCompId(comp.id)}
+                    aria-label={comp.name}
+                    data-testid={`tile-comp-${comp.id}`}
                   >
-                    <div
-                      className="character-emblem"
-                      style={{
-                        borderColor: comp.uiAccent,
-                        background: `linear-gradient(135deg, ${comp.uiAccent}44, #0f172a)`,
-                      }}
-                    >
-                      <span>犬</span>
-                    </div>
-                    <div className="character-info">
-                      <div className="shop-name-row">
-                        <span className="shop-name">{comp.name}</span>
-                        <span className="rarity-pill" style={{ color: comp.uiAccent }}>
-                          {comp.rarity}
-                        </span>
-                      </div>
-                      <span className="char-title">{comp.title}</span>
-                      <p className="shop-desc">{comp.description}</p>
-                    </div>
-                    <div className="character-action">
-                      {equipped ? (
-                        <span className="status-equipped">ÉQUIPÉ</span>
-                      ) : unlocked ? (
-                        <button
-                          type="button"
-                          className="action-btn-primary"
-                          onClick={() => onEquip(profile.equippedHeroId, comp.id)}
-                          data-testid={`equip-comp-${comp.id}`}
-                        >
-                          ÉQUIPER
-                        </button>
+                    <div className="portrait-art">
+                      {thumb ? (
+                        <img src={thumb} alt={comp.name} className="portrait-img" />
                       ) : (
-                        <button
-                          type="button"
-                          className={`price-btn ${affordable ? '' : 'disabled'}`}
-                          disabled={!affordable}
-                          onClick={() =>
-                            onBuyCharacter('companion', comp.id, comp.currency, comp.cost)
-                          }
-                          data-testid={`buy-comp-${comp.id}`}
-                        >
-                          {comp.currency === 'coins' ? (
-                            <CoinIcon size={15} />
-                          ) : (
-                            <GemIcon size={15} />
-                          )}
-                          <span className="tabular">{comp.cost}</span>
-                        </button>
+                        <span className="portrait-fallback" style={{ color: comp.uiAccent }}>
+                          犬
+                        </span>
                       )}
                     </div>
-                  </div>
+                    <span className="portrait-name">{comp.name}</span>
+                    {unlocked ? (
+                      <span className={`portrait-check ${equipped ? 'active' : ''}`}>✓</span>
+                    ) : (
+                      <span className="portrait-price-tag tabular">
+                        {comp.currency === 'coins' ? (
+                          <CoinIcon size={11} />
+                        ) : (
+                          <GemIcon size={11} />
+                        )}
+                        {comp.cost}
+                      </span>
+                    )}
+                  </button>
                 );
               })}
             </div>
           )}
-        </div>
+        </section>
+
+        {/* Bottom Folder Tab Switcher + Red Circular Close Button */}
+        <footer className="showroom-footer">
+          <div className="showroom-tabs">
+            <button
+              type="button"
+              className={`showroom-folder-tab ${subTab === 'heroes' ? 'active' : ''}`}
+              onClick={() => {
+                setSubTab('heroes');
+                setSearchQuery('');
+              }}
+              data-testid="tab-heroes"
+            >
+              Personnages ({HERO_CATALOG.length})
+            </button>
+            <button
+              type="button"
+              className={`showroom-folder-tab ${subTab === 'cars' ? 'active' : ''}`}
+              onClick={() => {
+                setSubTab('cars');
+                setSearchQuery('');
+              }}
+              data-testid="tab-cars"
+            >
+              Voitures ({CAR_CATALOG.length})
+            </button>
+            <button
+              type="button"
+              className={`showroom-folder-tab ${subTab === 'companions' ? 'active' : ''}`}
+              onClick={() => {
+                setSubTab('companions');
+                setSearchQuery('');
+              }}
+              data-testid="tab-companions"
+            >
+              Shiba ({COMPANION_CATALOG.length})
+            </button>
+          </div>
+
+          <div className="showroom-close-row">
+            <button
+              type="button"
+              className="circular-close-x"
+              onClick={onClose}
+              aria-label="Fermer"
+              data-testid="close-heroes-modal"
+            >
+              <CloseIcon size={24} />
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   );

@@ -116,4 +116,27 @@ class LocalGameRepositoryTest {
     val equippedDefault = repository.equipLoadout("ryu", withSigma.equippedCompanionId).getOrThrow()
     assertEquals("ryu", equippedDefault.equippedHeroId)
   }
+
+  @Test
+  fun `unlocks and equips convertible car models locally`() = runTest {
+    val initProfile = repository.ensurePlayerInitialized().getOrThrow()
+    assertEquals("yellow_cab_gt", initProfile.equippedCarId)
+    assertTrue(initProfile.unlockedCarIds.contains("yellow_cab_gt"))
+
+    repository.claimAllInbox().getOrThrow()
+    repository.claimFreeChest().getOrThrow()
+
+    val boughtCar =
+      repository.purchaseShopItem(
+        itemType = "car",
+        itemId = "red_dragon_roadster",
+        currency = "coins",
+        cost = 900L,
+      ).getOrThrow()
+    assertTrue(boughtCar.unlockedCarIds.contains("red_dragon_roadster"))
+    assertEquals("red_dragon_roadster", boughtCar.equippedCarId)
+
+    val reEquipped = repository.equipCar("yellow_cab_gt").getOrThrow()
+    assertEquals("yellow_cab_gt", reEquipped.equippedCarId)
+  }
 }

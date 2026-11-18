@@ -48,6 +48,31 @@ export interface CompanionDefinition {
   uiAccent: string;
 }
 
+export interface CarDefinition {
+  id: string;
+  name: string;
+  subtitle: string;
+  rarity: 'Commune' | 'Rare' | 'Épique' | 'Légendaire';
+  description: string;
+  perkLabel: string;
+  currency: 'coins' | 'gems';
+  cost: number;
+  bodyHex: number;
+  hoodHex: number;
+  neonHex: number;
+  flameHex: number;
+  rimHex: number;
+  interiorHex: number;
+  uiAccent: string;
+  hasCheckeredStripe: boolean;
+  hasTwinWing: boolean;
+  extraDurationSec: number;
+  turboSpeedBonus: number;
+  coinBonusRate: number;
+  scoreBonusRate: number;
+  sakuraOnActivate: number;
+}
+
 export interface ShopItemDefinition {
   id: string;
   itemType: 'consumable' | 'chest';
@@ -987,10 +1012,161 @@ export const SEASON_TIERS: SeasonTierInfo[] = Array.from({ length: 10 }, (_, idx
   };
 });
 
+export const CAR_CATALOG: CarDefinition[] = [
+  {
+    id: 'yellow_cab_gt',
+    name: 'Yellow Cab GT',
+    subtitle: 'Cabriolet Tokyo Damier',
+    rarity: 'Commune',
+    description: 'Cabriolet jaune iconique inspiré du YellowCab avec bande damier et aimant 10s.',
+    perkLabel: 'Aimant 10s + Vitesse 30,5 m/s',
+    currency: 'coins',
+    cost: 0,
+    bodyHex: 0xfacc15,
+    hoodHex: 0xf97316,
+    neonHex: 0x22d3ee,
+    flameHex: 0xf97316,
+    rimHex: 0xe2e8f0,
+    interiorHex: 0x0f172a,
+    uiAccent: '#facc15',
+    hasCheckeredStripe: true,
+    hasTwinWing: false,
+    extraDurationSec: 0,
+    turboSpeedBonus: 0,
+    coinBonusRate: 0,
+    scoreBonusRate: 0,
+    sakuraOnActivate: 0,
+  },
+  {
+    id: 'red_dragon_roadster',
+    name: 'Dragon Écarlate',
+    subtitle: 'Roadster GT Biturbo',
+    rarity: 'Rare',
+    description: 'Carrosserie rouge flamme, double aileron sport et autonomie prolongée.',
+    perkLabel: '+2s Durée Turbo (12s) + Vitesse +2 m/s',
+    currency: 'coins',
+    cost: 1400,
+    bodyHex: 0xdc2626,
+    hoodHex: 0xf97316,
+    neonHex: 0xfacc15,
+    flameHex: 0xfef08a,
+    rimHex: 0xfef08a,
+    interiorHex: 0x1c1917,
+    uiAccent: '#ef4444',
+    hasCheckeredStripe: false,
+    hasTwinWing: true,
+    extraDurationSec: 2,
+    turboSpeedBonus: 2.0,
+    coinBonusRate: 0,
+    scoreBonusRate: 0,
+    sakuraOnActivate: 0,
+  },
+  {
+    id: 'sakura_spider',
+    name: 'Sakura Spider',
+    subtitle: 'Édition Cerisier Nacré',
+    rarity: 'Épique',
+    description: 'Décapotable rose nacré ornée d’accents dorés qui multiplie les pièces collectées.',
+    perkLabel: '+25% Pièces pendant le mode Voiture',
+    currency: 'gems',
+    cost: 40,
+    bodyHex: 0xec4899,
+    hoodHex: 0xf472b6,
+    neonHex: 0xfbcfe8,
+    flameHex: 0xf472b6,
+    rimHex: 0xfde047,
+    interiorHex: 0x3b0764,
+    uiAccent: '#f472b6',
+    hasCheckeredStripe: false,
+    hasTwinWing: false,
+    extraDurationSec: 1,
+    turboSpeedBonus: 1.0,
+    coinBonusRate: 0.25,
+    scoreBonusRate: 0,
+    sakuraOnActivate: 1,
+  },
+  {
+    id: 'cyber_kitsune',
+    name: 'Cyber Kitsune EV',
+    subtitle: 'Prototype Néon Akihabara',
+    rarity: 'Épique',
+    description: 'Châssis carbone bleu nuit propulsé par des turbines plasma cyan.',
+    perkLabel: '+4,5 m/s Vitesse Turbo + +15% Score',
+    currency: 'coins',
+    cost: 2100,
+    bodyHex: 0x0284c7,
+    hoodHex: 0x0f172a,
+    neonHex: 0x22d3ee,
+    flameHex: 0x38bdf8,
+    rimHex: 0x38bdf8,
+    interiorHex: 0x090d1e,
+    uiAccent: '#22d3ee',
+    hasCheckeredStripe: true,
+    hasTwinWing: true,
+    extraDurationSec: 1,
+    turboSpeedBonus: 4.5,
+    coinBonusRate: 0,
+    scoreBonusRate: 0.15,
+    sakuraOnActivate: 0,
+  },
+  {
+    id: 'emerald_oni',
+    name: 'Oni Émeraude',
+    subtitle: 'Coupe Drift Ueno',
+    rarity: 'Rare',
+    description: 'Peinture jade métallisée taillée pour accumuler des points de score.',
+    perkLabel: '+30% Score pendant le mode Voiture',
+    currency: 'coins',
+    cost: 1850,
+    bodyHex: 0x059669,
+    hoodHex: 0x10b981,
+    neonHex: 0x6ee7b7,
+    flameHex: 0x34d399,
+    rimHex: 0xd1fae5,
+    interiorHex: 0x022c22,
+    uiAccent: '#34d399',
+    hasCheckeredStripe: false,
+    hasTwinWing: true,
+    extraDurationSec: 1.5,
+    turboSpeedBonus: 1.5,
+    coinBonusRate: 0.1,
+    scoreBonusRate: 0.3,
+    sakuraOnActivate: 0,
+  },
+  {
+    id: 'golden_shogun',
+    name: 'Shogun Impérial',
+    subtitle: 'Cabriolet Légendaire Or',
+    rarity: 'Légendaire',
+    description: 'Or massif et carbone impérial : durée max, vitesse suprême et jetons Sakura.',
+    perkLabel: 'Durée 13s + +25% Pièces & Score + 2 Sakura',
+    currency: 'gems',
+    cost: 80,
+    bodyHex: 0xeab308,
+    hoodHex: 0x111827,
+    neonHex: 0xfef08a,
+    flameHex: 0xf97316,
+    rimHex: 0xfef08a,
+    interiorHex: 0x18181b,
+    uiAccent: '#fde047',
+    hasCheckeredStripe: true,
+    hasTwinWing: true,
+    extraDurationSec: 3,
+    turboSpeedBonus: 4.0,
+    coinBonusRate: 0.25,
+    scoreBonusRate: 0.25,
+    sakuraOnActivate: 2,
+  },
+];
+
 export function getHeroById(id: string): HeroDefinition {
   return HERO_CATALOG.find((h) => h.id === id) ?? HERO_CATALOG[0];
 }
 
 export function getCompanionById(id: string): CompanionDefinition {
   return COMPANION_CATALOG.find((c) => c.id === id) ?? COMPANION_CATALOG[0];
+}
+
+export function getCarById(id: string): CarDefinition {
+  return CAR_CATALOG.find((car) => car.id === id) ?? CAR_CATALOG[0];
 }

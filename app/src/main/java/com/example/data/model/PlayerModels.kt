@@ -28,8 +28,10 @@ data class PlayerProfile(
   val multiplierExpiresAt: Long = 0L,
   val equippedHeroId: String = "ryu",
   val equippedCompanionId: String = "shiba_classic",
+  val equippedCarId: String = "yellow_cab_gt",
   val unlockedHeroIds: List<String> = listOf("ryu"),
   val unlockedCompanionIds: List<String> = listOf("shiba_classic"),
+  val unlockedCarIds: List<String> = listOf("yellow_cab_gt"),
   val collectionIds: List<String> = listOf("card_tokyo_rails"),
   val inventoryMagnets: Long = 1L,
   val inventoryShields: Long = 1L,
@@ -77,8 +79,10 @@ data class PlayerProfile(
         "multiplierExpiresAt" to multiplierExpiresAt,
         "equippedHeroId" to equippedHeroId,
         "equippedCompanionId" to equippedCompanionId,
+        "equippedCarId" to equippedCarId,
         "unlockedHeroIds" to unlockedHeroIds,
         "unlockedCompanionIds" to unlockedCompanionIds,
+        "unlockedCarIds" to unlockedCarIds,
         "collectionIds" to collectionIds,
         "inventoryMagnets" to inventoryMagnets,
         "inventoryShields" to inventoryShields,
@@ -127,8 +131,10 @@ data class PlayerProfile(
       put("multiplierExpiresAt", multiplierExpiresAt)
       put("equippedHeroId", equippedHeroId)
       put("equippedCompanionId", equippedCompanionId)
+      put("equippedCarId", equippedCarId)
       put("unlockedHeroIds", JSONArray(unlockedHeroIds))
       put("unlockedCompanionIds", JSONArray(unlockedCompanionIds))
+      put("unlockedCarIds", JSONArray(unlockedCarIds))
       put("collectionIds", JSONArray(collectionIds))
       put("inventoryMagnets", inventoryMagnets)
       put("inventoryShields", inventoryShields)

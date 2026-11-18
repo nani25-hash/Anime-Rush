@@ -1,9 +1,9 @@
 import * as THREE from 'three';
+import { getCarById } from '../config/catalog';
 import { createRadialShadowTexture, loadAtlasCropTexture } from './textures';
 
 /**
- * Sleek Open-Top Convertible Sports Car ("Voiture à toit ouvert") inspired by
- * the user's reference models and YellowCabBoard_tex checkered accents.
+ * Sleek Open-Top Convertible Sports Car ("Voiture à toit ouvert") supporting 6 customizable models.
  * The hero remains clearly visible seated inside the open cockpit.
  */
 export class ConvertibleCar3D {
@@ -13,12 +13,24 @@ export class ConvertibleCar3D {
   private readonly wheels: THREE.Group[] = [];
   private readonly exhaustFlames: THREE.Mesh[] = [];
   private readonly underglowMesh: THREE.Mesh;
+  private readonly taxiStripeMesh: THREE.Mesh;
+  private readonly twinWingUpper: THREE.Mesh;
+
+  private readonly chassisMat: THREE.MeshStandardMaterial;
+  private readonly hoodAccentMat: THREE.MeshStandardMaterial;
+  private readonly interiorMat: THREE.MeshStandardMaterial;
+  private readonly rimMat: THREE.MeshStandardMaterial;
+  private readonly neonTrimMat: THREE.MeshBasicMaterial;
+  private readonly flameMat: THREE.MeshBasicMaterial;
+  private readonly underglowMat: THREE.MeshBasicMaterial;
   private readonly disposables: Array<{ dispose: () => void }> = [];
 
   private wheelAngle = 0;
   private time = 0;
 
-  constructor(shadowTex?: THREE.Texture) {
+  constructor(shadowTex?: THREE.Texture, initialCarId = 'yellow_cab_gt') {
+    const initialCar = getCarById(initialCarId);
+
     const paintTex = loadAtlasCropTexture(
       './assets/textures/yellowcab_tex.png',
       0,
@@ -40,28 +52,28 @@ export class ConvertibleCar3D {
     );
     paintTex.repeat.set(3, 1);
 
-    const chassisMat = new THREE.MeshStandardMaterial({
-      color: 0xef4444,
-      roughness: 0.25,
-      metalness: 0.45,
+    this.chassisMat = new THREE.MeshStandardMaterial({
+      color: initialCar.bodyHex,
+      roughness: 0.24,
+      metalness: 0.48,
     });
-    const hoodAccentMat = new THREE.MeshStandardMaterial({
-      color: 0xf97316,
-      roughness: 0.28,
-      metalness: 0.4,
+    this.hoodAccentMat = new THREE.MeshStandardMaterial({
+      color: initialCar.hoodHex,
+      roughness: 0.26,
+      metalness: 0.42,
     });
     const taxiStripeMat = new THREE.MeshStandardMaterial({
       map: paintTex,
       roughness: 0.4,
       metalness: 0.3,
     });
-    const darkCarbonMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
+    this.interiorMat = new THREE.MeshStandardMaterial({
+      color: initialCar.interiorHex,
       roughness: 0.55,
-      metalness: 0.5,
+      metalness: 0.45,
     });
-    const chromeMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
+    this.rimMat = new THREE.MeshStandardMaterial({
+      color: initialCar.rimHex,
       roughness: 0.18,
       metalness: 0.9,
     });
@@ -74,14 +86,14 @@ export class ConvertibleCar3D {
       side: THREE.DoubleSide,
     });
     const headlightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
-    const neonTrimMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xf97316,
+    this.neonTrimMat = new THREE.MeshBasicMaterial({ color: initialCar.neonHex });
+    this.flameMat = new THREE.MeshBasicMaterial({
+      color: initialCar.flameHex,
       transparent: true,
       opacity: 0.85,
     });
-    const underglowMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee,
+    this.underglowMat = new THREE.MeshBasicMaterial({
+      color: initialCar.neonHex,
       transparent: true,
       opacity: 0.42,
       depthWrite: false,
@@ -89,22 +101,21 @@ export class ConvertibleCar3D {
 
     this.disposables.push(
       paintTex,
-      chassisMat,
-      hoodAccentMat,
+      this.chassisMat,
+      this.hoodAccentMat,
       taxiStripeMat,
-      darkCarbonMat,
-      chromeMat,
+      this.interiorMat,
+      this.rimMat,
       windshieldMat,
       headlightMat,
-      neonTrimMat,
-      flameMat,
-      underglowMat,
+      this.neonTrimMat,
+      this.flameMat,
+      this.underglowMat,
     );
 
     this.root.add(this.bodyGroup);
 
-    // Low slung sports body: lower floor + side doors + wide front hood + rear deck
-    // Kept open in the middle so the hero's upper torso, arms, head & scarf show clearly!
+    // Low slung sports body: open cockpit so seated hero shows clearly!
     const floorGeo = new THREE.BoxGeometry(1.48, 0.2, 3.05);
     const frontHoodGeo = new THREE.BoxGeometry(1.44, 0.44, 1.05);
     const noseSlopeGeo = new THREE.BoxGeometry(1.38, 0.26, 0.45);
@@ -114,6 +125,7 @@ export class ConvertibleCar3D {
     const windshieldGeo = new THREE.PlaneGeometry(1.24, 0.42);
     const wingPostGeo = new THREE.BoxGeometry(0.08, 0.26, 0.16);
     const wingBladeGeo = new THREE.BoxGeometry(1.52, 0.08, 0.34);
+    const twinWingGeo = new THREE.BoxGeometry(1.36, 0.06, 0.22);
     const stripeGeo = new THREE.BoxGeometry(1.5, 0.11, 1.2);
     const rollBarGeo = new THREE.TorusGeometry(0.42, 0.055, 8, 18, Math.PI);
     const wheelRimGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 16);
@@ -136,6 +148,7 @@ export class ConvertibleCar3D {
       windshieldGeo,
       wingPostGeo,
       wingBladeGeo,
+      twinWingGeo,
       stripeGeo,
       rollBarGeo,
       wheelRimGeo,
@@ -146,65 +159,67 @@ export class ConvertibleCar3D {
       underglowGeo,
     );
 
-    const floor = new THREE.Mesh(floorGeo, darkCarbonMat);
+    const floor = new THREE.Mesh(floorGeo, this.interiorMat);
     floor.position.set(0, 0.3, 0);
     floor.castShadow = true;
 
-    const hood = new THREE.Mesh(frontHoodGeo, chassisMat);
+    const hood = new THREE.Mesh(frontHoodGeo, this.chassisMat);
     hood.position.set(0, 0.52, -0.95);
     hood.castShadow = true;
 
-    const nose = new THREE.Mesh(noseSlopeGeo, hoodAccentMat);
+    const nose = new THREE.Mesh(noseSlopeGeo, this.hoodAccentMat);
     nose.position.set(0, 0.43, -1.55);
     nose.rotation.x = 0.28;
 
-    const taxiStripe = new THREE.Mesh(stripeGeo, taxiStripeMat);
-    taxiStripe.position.set(0, 0.52, 0);
+    this.taxiStripeMesh = new THREE.Mesh(stripeGeo, taxiStripeMat);
+    this.taxiStripeMesh.position.set(0, 0.52, 0);
 
-    const leftDoor = new THREE.Mesh(sideDoorGeo, chassisMat);
+    const leftDoor = new THREE.Mesh(sideDoorGeo, this.chassisMat);
     leftDoor.position.set(-0.68, 0.54, 0.06);
     leftDoor.castShadow = true;
 
-    const rightDoor = new THREE.Mesh(sideDoorGeo, chassisMat);
+    const rightDoor = new THREE.Mesh(sideDoorGeo, this.chassisMat);
     rightDoor.position.set(0.68, 0.54, 0.06);
     rightDoor.castShadow = true;
 
-    const rearDeck = new THREE.Mesh(rearDeckGeo, chassisMat);
+    const rearDeck = new THREE.Mesh(rearDeckGeo, this.chassisMat);
     rearDeck.position.set(0, 0.58, 1.02);
     rearDeck.castShadow = true;
 
-    const seatBack = new THREE.Mesh(seatBackGeo, darkCarbonMat);
+    const seatBack = new THREE.Mesh(seatBackGeo, this.interiorMat);
     seatBack.position.set(0, 0.72, 0.52);
     seatBack.rotation.x = -0.22;
 
-    const rollBar = new THREE.Mesh(rollBarGeo, chromeMat);
+    const rollBar = new THREE.Mesh(rollBarGeo, this.rimMat);
     rollBar.position.set(0, 0.84, 0.6);
 
     const windshield = new THREE.Mesh(windshieldGeo, windshieldMat);
     windshield.position.set(0, 0.88, -0.48);
     windshield.rotation.x = -0.58;
 
-    const steeringWheel = new THREE.Mesh(steeringWheelGeo, darkCarbonMat);
+    const steeringWheel = new THREE.Mesh(steeringWheelGeo, this.interiorMat);
     steeringWheel.position.set(0, 0.82, -0.34);
     steeringWheel.rotation.x = 0.45;
 
-    // Rear sport spoiler
     for (const sx of [-0.46, 0.46]) {
-      const post = new THREE.Mesh(wingPostGeo, darkCarbonMat);
+      const post = new THREE.Mesh(wingPostGeo, this.interiorMat);
       post.position.set(sx, 0.94, 1.32);
       this.bodyGroup.add(post);
     }
-    const wingBlade = new THREE.Mesh(wingBladeGeo, hoodAccentMat);
+    const wingBlade = new THREE.Mesh(wingBladeGeo, this.hoodAccentMat);
     wingBlade.position.set(0, 1.08, 1.35);
     wingBlade.rotation.x = -0.14;
 
-    // Headlights & neon bumper trim
+    this.twinWingUpper = new THREE.Mesh(twinWingGeo, this.rimMat);
+    this.twinWingUpper.position.set(0, 1.2, 1.4);
+    this.twinWingUpper.rotation.x = -0.12;
+
     for (const sx of [-0.48, 0.48]) {
       const lamp = new THREE.Mesh(headlightGeo, headlightMat);
       lamp.position.set(sx, 0.5, -1.68);
       this.bodyGroup.add(lamp);
 
-      const tailPipe = new THREE.Mesh(flameGeo, flameMat);
+      const tailPipe = new THREE.Mesh(flameGeo, this.flameMat);
       tailPipe.position.set(sx * 0.72, 0.38, 1.65);
       this.bodyGroup.add(tailPipe);
       this.exhaustFlames.push(tailPipe);
@@ -212,10 +227,9 @@ export class ConvertibleCar3D {
 
     const neonBarGeo = new THREE.BoxGeometry(1.36, 0.06, 0.06);
     this.disposables.push(neonBarGeo);
-    const frontNeon = new THREE.Mesh(neonBarGeo, neonTrimMat);
+    const frontNeon = new THREE.Mesh(neonBarGeo, this.neonTrimMat);
     frontNeon.position.set(0, 0.25, -1.68);
 
-    // Wheels
     const wheelOffsets: Array<[number, number]> = [
       [-0.76, -0.98],
       [0.76, -0.98],
@@ -225,14 +239,14 @@ export class ConvertibleCar3D {
     for (const [wx, wz] of wheelOffsets) {
       const wg = new THREE.Group();
       wg.position.set(wx, 0.32, wz);
-      const tire = new THREE.Mesh(wheelRimGeo, darkCarbonMat);
-      const hub = new THREE.Mesh(hubCapGeo, chromeMat);
+      const tire = new THREE.Mesh(wheelRimGeo, this.interiorMat);
+      const hub = new THREE.Mesh(hubCapGeo, this.rimMat);
       wg.add(tire, hub);
       this.bodyGroup.add(wg);
       this.wheels.push(wg);
     }
 
-    this.underglowMesh = new THREE.Mesh(underglowGeo, underglowMat);
+    this.underglowMesh = new THREE.Mesh(underglowGeo, this.underglowMat);
     this.underglowMesh.rotation.x = -Math.PI / 2;
     this.underglowMesh.position.set(0, 0.04, 0);
 
@@ -258,7 +272,7 @@ export class ConvertibleCar3D {
       floor,
       hood,
       nose,
-      taxiStripe,
+      this.taxiStripeMesh,
       leftDoor,
       rightDoor,
       rearDeck,
@@ -267,10 +281,25 @@ export class ConvertibleCar3D {
       windshield,
       steeringWheel,
       wingBlade,
+      this.twinWingUpper,
       frontNeon,
     );
     this.root.add(this.underglowMesh);
+    this.setCarModel(initialCarId);
     this.root.visible = false;
+  }
+
+  public setCarModel(carId: string): void {
+    const car = getCarById(carId);
+    this.chassisMat.color.setHex(car.bodyHex);
+    this.hoodAccentMat.color.setHex(car.hoodHex);
+    this.interiorMat.color.setHex(car.interiorHex);
+    this.rimMat.color.setHex(car.rimHex);
+    this.neonTrimMat.color.setHex(car.neonHex);
+    this.flameMat.color.setHex(car.flameHex);
+    this.underglowMat.color.setHex(car.neonHex);
+    this.taxiStripeMesh.visible = car.hasCheckeredStripe;
+    this.twinWingUpper.visible = car.hasTwinWing;
   }
 
   public setVisible(visible: boolean): void {
@@ -285,7 +314,6 @@ export class ConvertibleCar3D {
       w.rotation.x = this.wheelAngle;
     }
 
-    // Subtle suspension bounce + banking
     this.bodyGroup.position.y = Math.sin(this.time * 24) * 0.015;
     this.bodyGroup.rotation.z = THREE.MathUtils.clamp(-lateralDelta * 0.025, -0.18, 0.18);
     this.bodyGroup.rotation.y = THREE.MathUtils.clamp(-lateralDelta * 0.012, -0.12, 0.12);
@@ -295,8 +323,7 @@ export class ConvertibleCar3D {
       flame.scale.set(1, 1, flameScale);
     }
 
-    const glowMat = this.underglowMesh.material as THREE.MeshBasicMaterial;
-    glowMat.opacity = 0.34 + Math.sin(this.time * 12) * 0.1;
+    this.underglowMat.opacity = 0.34 + Math.sin(this.time * 12) * 0.1;
   }
 
   public dispose(): void {

@@ -184,6 +184,19 @@ class MainActivity : ComponentActivity() {
     }
 
     @JavascriptInterface
+    fun equipCar(carId: String) {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .equipCar(carId)
+          .onSuccess {
+            syncProfileToWeb(it)
+            refreshSocialBundle()
+          }
+          .onFailure { emitError("equipCar", it) }
+      }
+    }
+
+    @JavascriptInterface
     fun claimFreeChest() {
       lifecycleScope.launch(Dispatchers.IO) {
         localGameRepository

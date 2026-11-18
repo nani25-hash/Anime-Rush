@@ -27,6 +27,8 @@ export interface PooledObstacle {
   passSoundPlayed: boolean;
   lane: LaneIndex;
   openLanes: LaneIndex[];
+  speed: number;
+  wheels?: THREE.Mesh[];
   laneBlocks?: [THREE.Mesh, THREE.Mesh, THREE.Mesh];
   singleArchFrames?: [THREE.Group, THREE.Group, THREE.Group];
   doubleArchFrames?: [THREE.Group, THREE.Group];
@@ -335,7 +337,7 @@ export class ObstacleAndCoinPools {
     }
     this.sharedDisposables.push(...curvedMaterials);
 
-    // Pre-allocate railway obstacles & oncoming Blue/White Metro Trains
+    // Pre-allocate railway barriers, high beams, and dynamic moving Rush Metro Trains
     for (let i = 0; i < 10; i++) {
       this.obstacles.push(
         this.createLowBarrier(scene, hazardBarMat, darkMetalMat, redLacquerMat, shadowMat),
@@ -343,18 +345,9 @@ export class ObstacleAndCoinPools {
       this.obstacles.push(
         this.createHighBeam(scene, darkMetalMat, cyanSignalMat, highVoltageMat, shadowMat),
       );
-      this.obstacles.push(
-        this.createParkedTrainCar(
-          scene,
-          trainSideMat,
-          trainFrontMat,
-          trainRoofMat,
-          darkMetalMat,
-          shadowMat,
-        ),
-      );
     }
-    for (let i = 0; i < 6; i++) {
+    // 14 dynamic moving metro trains (varying lengths & speeds, zero static trains!)
+    for (let i = 0; i < 14; i++) {
       this.obstacles.push(
         this.createMovingRushTrain(
           scene,
@@ -364,6 +357,8 @@ export class ObstacleAndCoinPools {
           darkMetalMat,
           headlightMat,
           shadowMat,
+          i % 2 === 0 ? 4.4 : 6.4,
+          i % 2 === 0 ? 11.4 : 9.8,
         ),
       );
     }
@@ -564,6 +559,7 @@ export class ObstacleAndCoinPools {
       passSoundPlayed: false,
       lane: 0,
       openLanes: [],
+      speed: 0,
       z: 0,
       halfWidth: 0.78,
       minY: 0,
@@ -623,70 +619,12 @@ export class ObstacleAndCoinPools {
       passSoundPlayed: false,
       lane: 0,
       openLanes: [],
+      speed: 0,
       z: 0,
       halfWidth: 0.78,
       minY: 1.05,
       maxY: 2.5,
       halfDepth: 0.28,
-    };
-  }
-
-  private createParkedTrainCar(
-    scene: THREE.Scene,
-    trainSideMat: THREE.Material,
-    trainFrontMat: THREE.Material,
-    trainRoofMat: THREE.Material,
-    darkMat: THREE.Material,
-    shadowMat: THREE.Material,
-  ): PooledObstacle {
-    const group = new THREE.Group();
-    const chassisGeo = new THREE.BoxGeometry(1.74, 0.34, 1.68);
-    const bodyGeo = new THREE.BoxGeometry(1.68, 2.48, 1.6);
-    const roofGeo = new THREE.BoxGeometry(1.56, 0.26, 1.58);
-    const shadowGeo = new THREE.PlaneGeometry(2.1, 2.0);
-    this.sharedDisposables.push(chassisGeo, bodyGeo, roofGeo, shadowGeo);
-
-    const bodyMats = [
-      trainSideMat,
-      trainSideMat,
-      trainRoofMat,
-      darkMat,
-      trainFrontMat,
-      trainFrontMat,
-    ];
-
-    const chassis = new THREE.Mesh(chassisGeo, darkMat);
-    chassis.position.y = 0.17;
-    chassis.castShadow = true;
-
-    const body = new THREE.Mesh(bodyGeo, bodyMats);
-    body.position.y = 1.58;
-    body.castShadow = true;
-
-    const roof = new THREE.Mesh(roofGeo, trainRoofMat);
-    roof.position.y = 2.95;
-
-    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.025;
-
-    group.add(chassis, body, roof, shadow);
-    group.visible = false;
-    scene.add(group);
-
-    return {
-      kind: 'FULL_PILLAR',
-      mesh: group,
-      active: false,
-      triggered: false,
-      passSoundPlayed: false,
-      lane: 0,
-      openLanes: [],
-      z: 0,
-      halfWidth: 0.74,
-      minY: 0,
-      maxY: 3.1,
-      halfDepth: 0.72,
     };
   }
 
@@ -698,20 +636,26 @@ export class ObstacleAndCoinPools {
     darkMat: THREE.Material,
     headlightMat: THREE.Material,
     shadowMat: THREE.Material,
+    trainLength = 4.4,
+    trainSpeed = 11.2,
   ): PooledObstacle {
     const group = new THREE.Group();
-    const chassisGeo = new THREE.BoxGeometry(1.82, 0.38, 4.4);
-    const cabinGeo = new THREE.BoxGeometry(1.76, 2.15, 4.25);
-    const roofGeo = new THREE.BoxGeometry(1.64, 0.25, 4.2);
-    const acUnitGeo = new THREE.BoxGeometry(0.9, 0.22, 1.4);
+    const halfLen = trainLength * 0.5;
+    const chassisGeo = new THREE.BoxGeometry(1.82, 0.34, trainLength);
+    const cabinGeo = new THREE.BoxGeometry(1.76, 2.15, trainLength - 0.16);
+    const roofGeo = new THREE.BoxGeometry(1.64, 0.25, trainLength - 0.2);
+    const acUnitGeo = new THREE.BoxGeometry(0.9, 0.22, Math.min(2.0, trainLength * 0.32));
     const lampGeo = new THREE.BoxGeometry(0.32, 0.24, 0.16);
-    const shadowGeo = new THREE.PlaneGeometry(2.3, 4.7);
+    const wheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 1.72, 12);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const shadowGeo = new THREE.PlaneGeometry(2.3, trainLength + 0.35);
     this.sharedDisposables.push(
       chassisGeo,
       cabinGeo,
       roofGeo,
       acUnitGeo,
       lampGeo,
+      wheelGeo,
       shadowGeo,
     );
 
@@ -725,23 +669,35 @@ export class ObstacleAndCoinPools {
     ];
 
     const chassis = new THREE.Mesh(chassisGeo, darkMat);
-    chassis.position.y = 0.19;
+    chassis.position.y = 0.28;
     chassis.castShadow = true;
 
     const cabin = new THREE.Mesh(cabinGeo, bodyMats);
-    cabin.position.y = 1.45;
+    cabin.position.y = 1.52;
     cabin.castShadow = true;
 
     const roof = new THREE.Mesh(roofGeo, trainRoofMat);
-    roof.position.y = 2.65;
+    roof.position.y = 2.72;
 
     const acUnit = new THREE.Mesh(acUnitGeo, darkMat);
-    acUnit.position.y = 2.86;
+    acUnit.position.y = 2.93;
 
     const leftLamp = new THREE.Mesh(lampGeo, headlightMat);
-    leftLamp.position.set(-0.54, 0.85, 2.12);
+    leftLamp.position.set(-0.54, 0.88, halfLen - 0.04);
     const rightLamp = new THREE.Mesh(lampGeo, headlightMat);
-    rightLamp.position.set(0.54, 0.85, 2.12);
+    rightLamp.position.set(0.54, 0.88, halfLen - 0.04);
+
+    const wheels: THREE.Mesh[] = [];
+    const axleZs =
+      trainLength > 5.0
+        ? [-halfLen + 0.65, -0.4, 0.4, halfLen - 0.65]
+        : [-halfLen + 0.65, halfLen - 0.65];
+    for (const wz of axleZs) {
+      const axle = new THREE.Mesh(wheelGeo, darkMat);
+      axle.position.set(0, 0.24, wz);
+      group.add(axle);
+      wheels.push(axle);
+    }
 
     const shadow = new THREE.Mesh(shadowGeo, shadowMat);
     shadow.rotation.x = -Math.PI / 2;
@@ -759,11 +715,13 @@ export class ObstacleAndCoinPools {
       passSoundPlayed: false,
       lane: 0,
       openLanes: [],
+      speed: trainSpeed,
+      wheels,
       z: 0,
       halfWidth: 0.78,
       minY: 0,
-      maxY: 2.75,
-      halfDepth: 2.05,
+      maxY: 2.8,
+      halfDepth: halfLen - 0.14,
     };
   }
 
@@ -880,6 +838,7 @@ export class ObstacleAndCoinPools {
       passSoundPlayed: false,
       lane: 0,
       openLanes: [0],
+      speed: 0,
       laneBlocks: laneBlocks as [THREE.Mesh, THREE.Mesh, THREE.Mesh],
       singleArchFrames: singleArchFrames as [THREE.Group, THREE.Group, THREE.Group],
       doubleArchFrames: doubleArchFrames as [THREE.Group, THREE.Group],
@@ -975,9 +934,32 @@ export class ObstacleAndCoinPools {
           obs.triggered = true;
         }
         if (obs.triggered) {
-          obs.z += GAME_CONSTANTS.MOVING_CART_SPEED * dt;
+          const stepSpeed = obs.speed > 0 ? obs.speed : GAME_CONSTANTS.MOVING_CART_SPEED;
+          let nextZ = obs.z + stepSpeed * dt;
+
+          // Prevent dynamic moving trains from clipping through any active brick wall gate ahead of them
+          for (const wall of this.obstacles) {
+            if (!wall.active || (wall.kind !== 'WALL_GATE_1' && wall.kind !== 'WALL_GATE_2')) {
+              continue;
+            }
+            const stopBoundary = wall.z - wall.halfDepth - obs.halfDepth - 0.85;
+            if (obs.z <= stopBoundary + 0.05 && nextZ > stopBoundary) {
+              nextZ = stopBoundary;
+              break;
+            }
+          }
+
+          const movedDz = Math.max(0, nextZ - obs.z);
+          obs.z = nextZ;
           obs.mesh.position.z = obs.z;
-          if (!obs.passSoundPlayed && Math.abs(obs.z - runnerZ) < 10.5) {
+
+          if (obs.wheels && movedDz > 0) {
+            for (const wheel of obs.wheels) {
+              wheel.rotation.x += movedDz * 4.2;
+            }
+          }
+
+          if (!obs.passSoundPlayed && Math.abs(obs.z - runnerZ) < 11.5) {
             obs.passSoundPlayed = true;
             passedMovingTrain = true;
           }
@@ -1115,43 +1097,41 @@ export class ObstacleAndCoinPools {
         this.activateWallGate('WALL_GATE_1', z, [openLane]);
         this.spawnCoinLine(openLane, z + 5.0, 5, 2.2, 1.0);
       }
-    } else if (this.waveCounter <= 2 || roll < 0.22) {
+    } else if (this.waveCounter <= 2 || roll < 0.24) {
       const kind: ObstacleKind =
-        roll < 0.08 ? 'LOW_BARRIER' : roll < 0.15 ? 'HIGH_BEAM' : 'FULL_PILLAR';
-      this.activateObstacle(kind, laneB, z);
+        roll < 0.09 ? 'LOW_BARRIER' : roll < 0.16 ? 'HIGH_BEAM' : 'MOVING_CART';
+      this.activateObstacle(kind, laneB, kind === 'MOVING_CART' ? z - 5 : z);
       this.spawnCoinLine(openLane, z + 4, 5, 2.2, 1.0);
-    } else if (roll < 0.44) {
-      this.activateObstacle('FULL_PILLAR', laneB, z);
-      if (difficulty > 0.18 || Math.random() < 0.65) {
-        this.activateObstacle(Math.random() < 0.5 ? 'FULL_PILLAR' : 'LOW_BARRIER', laneC, z);
+    } else if (roll < 0.48) {
+      this.activateObstacle('MOVING_CART', laneB, z - 5.5);
+      if (difficulty > 0.15 || Math.random() < 0.68) {
+        const secondKind: ObstacleKind = Math.random() < 0.5 ? 'MOVING_CART' : 'LOW_BARRIER';
+        this.activateObstacle(secondKind, laneC, secondKind === 'MOVING_CART' ? z - 7.5 : z);
       }
       this.spawnCoinLine(openLane, z + 2, 4, 2.2, 1.0);
-    } else if (roll < 0.64) {
+    } else if (roll < 0.68) {
       this.activateObstacle('LOW_BARRIER', openLane, z);
-      this.activateObstacle('FULL_PILLAR', laneB, z);
-      if (difficulty > 0.3) {
+      this.activateObstacle('MOVING_CART', laneB, z - 5);
+      if (difficulty > 0.28) {
         this.activateObstacle('HIGH_BEAM', laneC, z);
       }
       this.spawnCoinArc(openLane, z);
-    } else if (roll < 0.8) {
+    } else if (roll < 0.84) {
       this.activateObstacle('HIGH_BEAM', openLane, z);
-      this.activateObstacle('FULL_PILLAR', laneB, z);
-      if (difficulty > 0.25) {
+      this.activateObstacle('MOVING_CART', laneB, z - 5);
+      if (difficulty > 0.22) {
         this.activateObstacle('LOW_BARRIER', laneC, z);
       }
       this.spawnCoinLine(openLane, z + 3.2, 4, 2.1, 0.52);
     } else {
-      this.activateObstacle('MOVING_CART', laneB, z - 4);
-      if (difficulty > 0.2) {
-        this.activateObstacle(Math.random() < 0.5 ? 'LOW_BARRIER' : 'HIGH_BEAM', laneC, z);
-      }
+      this.activateObstacle('MOVING_CART', laneB, z - 5);
+      this.activateObstacle('MOVING_CART', laneC, z - 8.5);
       this.spawnCoinLine(openLane, z + 3.5, 5, 2.2, 1.0);
     }
 
     // Periodically spawn Fuel Jerrycan, Sakura Token, or Magnet/Shield orb on the safe lane
     if (this.waveCounter >= 2 && this.waveCounter % 2 === 0) {
-      const fuelLane = this.waveCounter % 5 === 0 ? openLane : lanes[Math.random() < 0.5 ? 0 : 0];
-      this.activateFuelCan(fuelLane * GAME_CONSTANTS.LANE_WIDTH, 1.08, z - 6.8);
+      this.activateFuelCan(openLane * GAME_CONSTANTS.LANE_WIDTH, 1.08, z - 6.8);
     } else if (this.waveCounter % 3 === 0) {
       this.activateSakuraToken(openLane * GAME_CONSTANTS.LANE_WIDTH, 1.15, z - 6.5);
     } else if (this.waveCounter % 7 === 0) {
@@ -1159,7 +1139,8 @@ export class ObstacleAndCoinPools {
       this.activatePowerup(kind, openLane * GAME_CONSTANTS.LANE_WIDTH, 1.15, z - 6.5);
     }
 
-    const minGap = 16.5 + worldSpeed * 0.45 - difficulty * 2.2;
+    const extraWallBuffer = this.waveCounter >= 4 && this.waveCounter % 5 === 0 ? 7.5 : 0;
+    const minGap = 18.0 + extraWallBuffer + worldSpeed * 0.45 - difficulty * 2.0;
     const maxGap = minGap + 6.5;
     this.nextSpawnZ -= minGap + Math.random() * (maxGap - minGap);
   }

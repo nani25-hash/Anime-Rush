@@ -128,7 +128,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           {hud.carActive && (
             <div className="car-active-pill tabular" data-testid="car-active-badge">
               <CarIcon size={22} />
-              <span>CABRIOLET INVINCIBLE · {hud.carRemaining}s</span>
+              <span>{hud.carName.toUpperCase()} · {hud.carRemaining}s</span>
             </div>
           )}
 

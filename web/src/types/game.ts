@@ -91,6 +91,7 @@ export interface HudSnapshot {
   fuelReady: boolean;
   carRemaining: number;
   carActive: boolean;
+  carName: string;
   // Dynamic Hero Power System
   heroName: string;
   heroPowerName: string;
@@ -118,8 +119,10 @@ export interface PlayerProfile {
   multiplierExpiresAt: number;
   equippedHeroId: string;
   equippedCompanionId: string;
+  equippedCarId: string;
   unlockedHeroIds: string[];
   unlockedCompanionIds: string[];
+  unlockedCarIds: string[];
   collectionIds: string[];
   inventoryMagnets: number;
   inventoryShields: number;
@@ -259,8 +262,8 @@ export const GAME_CONSTANTS = {
   INPUT_BUFFER_SEC: 0.14,
   COYOTE_TIME_SEC: 0.09,
   LIFE_REGEN_SEC: 4.2,
-  MOVING_CART_SPEED: 8.5,
-  MOVING_CART_TRIGGER_DIST: 52.0,
+  MOVING_CART_SPEED: 11.2,
+  MOVING_CART_TRIGGER_DIST: 96.0,
   COIN_SCORE_VALUE: 25,
   DISTANCE_SCORE_RATE: 10,
   FUEL_MAX_UNITS: 100,

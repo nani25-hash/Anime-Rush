@@ -18,6 +18,7 @@ declare global {
       requestSyncAll?: () => void;
       updateDisplayName?: (newName: string) => void;
       equipLoadout?: (heroId: string, companionId: string) => void;
+      equipCar?: (carId: string) => void;
       claimFreeChest?: () => void;
       recordRunResult?: (
         score: number,
@@ -85,8 +86,10 @@ const DEFAULT_FALLBACK_PROFILE: PlayerProfile = {
   multiplierExpiresAt: 0,
   equippedHeroId: 'ryu',
   equippedCompanionId: 'shiba_classic',
+  equippedCarId: 'yellow_cab_gt',
   unlockedHeroIds: ['ryu'],
   unlockedCompanionIds: ['shiba_classic'],
+  unlockedCarIds: ['yellow_cab_gt'],
   collectionIds: ['card_tokyo_rails'],
   inventoryMagnets: 1,
   inventoryShields: 1,
@@ -124,10 +127,11 @@ export interface GameProfileActions {
   syncAll: () => void;
   updateDisplayName: (name: string) => void;
   equipLoadout: (heroId: string, companionId: string) => void;
+  equipCar: (carId: string) => void;
   claimFreeChest: () => void;
   recordRunResult: (telemetry: RunTelemetry) => void;
   purchaseShopItem: (
-    itemType: 'hero' | 'companion' | 'consumable' | 'chest',
+    itemType: 'hero' | 'companion' | 'car' | 'consumable' | 'chest',
     itemId: string,
     currency: 'coins' | 'gems',
     cost: number,
@@ -259,6 +263,11 @@ export function useGameProfile(): {
     window.AndroidBridge?.equipLoadout?.(heroId, companionId);
   }, []);
 
+  const equipCar = useCallback((carId: string) => {
+    setProfile((p) => ({ ...p, equippedCarId: carId }));
+    window.AndroidBridge?.equipCar?.(carId);
+  }, []);
+
   const claimFreeChest = useCallback(() => {
     if (window.AndroidBridge?.claimFreeChest) {
       window.AndroidBridge.claimFreeChest();
@@ -308,7 +317,7 @@ export function useGameProfile(): {
 
   const purchaseShopItem = useCallback(
     (
-      itemType: 'hero' | 'companion' | 'consumable' | 'chest',
+      itemType: 'hero' | 'companion' | 'car' | 'consumable' | 'chest',
       itemId: string,
       currency: 'coins' | 'gems',
       cost: number,
@@ -316,6 +325,40 @@ export function useGameProfile(): {
       if (window.AndroidBridge?.purchaseShopItem) {
         window.AndroidBridge.purchaseShopItem(itemType, itemId, currency, cost);
       } else {
+        setProfile((p) => {
+          const canPay = currency === 'coins' ? p.coins >= cost : p.gems >= cost;
+          if (!canPay) return p;
+          const nextCoins = currency === 'coins' ? p.coins - cost : p.coins;
+          const nextGems = currency === 'gems' ? p.gems - cost : p.gems;
+          if (itemType === 'hero') {
+            return {
+              ...p,
+              coins: nextCoins,
+              gems: nextGems,
+              unlockedHeroIds: Array.from(new Set([...p.unlockedHeroIds, itemId])),
+              equippedHeroId: itemId,
+            };
+          }
+          if (itemType === 'companion') {
+            return {
+              ...p,
+              coins: nextCoins,
+              gems: nextGems,
+              unlockedCompanionIds: Array.from(new Set([...p.unlockedCompanionIds, itemId])),
+              equippedCompanionId: itemId,
+            };
+          }
+          if (itemType === 'car') {
+            return {
+              ...p,
+              coins: nextCoins,
+              gems: nextGems,
+              unlockedCarIds: Array.from(new Set([...p.unlockedCarIds, itemId])),
+              equippedCarId: itemId,
+            };
+          }
+          return { ...p, coins: nextCoins, gems: nextGems };
+        });
         setToastMessage('Achat effectué (aperçu local)');
       }
     },
@@ -436,6 +479,7 @@ export function useGameProfile(): {
       syncAll,
       updateDisplayName,
       equipLoadout,
+      equipCar,
       claimFreeChest,
       recordRunResult,
       purchaseShopItem,

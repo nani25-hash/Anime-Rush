@@ -13,7 +13,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShopModal } from './components/ShopModal';
 import { SocialHubModal } from './components/SocialHubModal';
 import { TopBar } from './components/TopBar';
-import { HERO_CATALOG } from './config/catalog';
+import { CAR_CATALOG, HERO_CATALOG } from './config/catalog';
 import { AnimeRushEngine } from './game/AnimeRushEngine';
 import { useGameProfile } from './state/useGameProfile';
 import {
@@ -62,6 +62,7 @@ export const App: React.FC = () => {
     fuelReady: false,
     carRemaining: 0,
     carActive: false,
+    carName: 'Yellow Cab GT',
     heroName: 'Ryu Hoshino',
     heroPowerName: 'Élan Torii',
     heroPowerAccent: '#ef4444',
@@ -165,9 +166,13 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync equipped 3D Hero + Shiba Companion skins & best score/multiplier to 3D engine
+  // Sync equipped 3D Hero + Shiba Companion + Convertible Car skins & best score/multiplier to 3D engine
   useEffect(() => {
-    engineRef.current?.setLoadout(profile.equippedHeroId, profile.equippedCompanionId);
+    engineRef.current?.setLoadout(
+      profile.equippedHeroId,
+      profile.equippedCompanionId,
+      profile.equippedCarId,
+    );
     const multActive =
       profile.activeMultiplier > 1 && profile.multiplierExpiresAt > Date.now()
         ? profile.activeMultiplier
@@ -176,6 +181,7 @@ export const App: React.FC = () => {
   }, [
     profile.equippedHeroId,
     profile.equippedCompanionId,
+    profile.equippedCarId,
     profile.bestScore,
     profile.activeMultiplier,
     profile.multiplierExpiresAt,
@@ -276,8 +282,13 @@ export const App: React.FC = () => {
         (h) =>
           !profile.unlockedHeroIds.includes(h.id) &&
           (h.currency === 'coins' ? profile.coins >= h.cost : profile.gems >= h.cost),
+      ) ||
+      CAR_CATALOG.some(
+        (c) =>
+          !profile.unlockedCarIds.includes(c.id) &&
+          (c.currency === 'coins' ? profile.coins >= c.cost : profile.gems >= c.cost),
       ),
-    [profile.coins, profile.gems, profile.unlockedHeroIds],
+    [profile.coins, profile.gems, profile.unlockedHeroIds, profile.unlockedCarIds],
   );
 
   return (
@@ -362,6 +373,10 @@ export const App: React.FC = () => {
           onEquip={(heroId, compId) => {
             engineRef.current?.playUiSound();
             actions.equipLoadout(heroId, compId);
+          }}
+          onEquipCar={(carId) => {
+            engineRef.current?.playUiSound();
+            actions.equipCar(carId);
           }}
           onBuyCharacter={(itemType, itemId, currency, cost) => {
             engineRef.current?.playUnlockSound();

@@ -212,6 +212,31 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
     }
   }
 
+  suspend fun equipCar(carId: String): Result<PlayerProfile> {
+    return try {
+      val updated =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          val profile = current.toPlayerProfile()
+          if (!profile.unlockedCarIds.contains(carId)) {
+            throw IllegalArgumentException("Voiture non débloquée : $carId")
+          }
+          val next =
+            current.copy(
+              equippedCarId = carId,
+              updatedAtMs = System.currentTimeMillis(),
+            )
+          dao.upsertProfile(next)
+          next.toPlayerProfile()
+        }
+      Result.success(updated)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
   suspend fun claimFreeChest(): Result<ChestRewardResult> {
     return try {
       val result =
@@ -407,6 +432,8 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
           var equippedHero = current.equippedHeroId
           var unlockedCompanions = current.unlockedCompanionIdsJson
           var equippedCompanion = current.equippedCompanionId
+          var unlockedCars = current.unlockedCarIdsJson
+          var equippedCar = current.equippedCarId
           var magnets = profile.inventoryMagnets
           var shields = profile.inventoryShields
           var multipliers = profile.inventoryMultipliers
@@ -426,6 +453,12 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
               set.add(itemId)
               unlockedCompanions = LocalProfileEntity.encodeStringList(set.toList())
               equippedCompanion = itemId
+            }
+            "car" -> {
+              val set = profile.unlockedCarIds.toMutableSet()
+              set.add(itemId)
+              unlockedCars = LocalProfileEntity.encodeStringList(set.toList())
+              equippedCar = itemId
             }
             "consumable" -> {
               when (itemId) {
@@ -459,6 +492,8 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
               equippedHeroId = equippedHero,
               unlockedCompanionIdsJson = unlockedCompanions,
               equippedCompanionId = equippedCompanion,
+              unlockedCarIdsJson = unlockedCars,
+              equippedCarId = equippedCar,
               inventoryMagnets = magnets,
               inventoryShields = shields,
               inventoryMultipliers = multipliers,

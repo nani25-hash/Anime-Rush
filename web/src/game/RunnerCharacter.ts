@@ -129,6 +129,7 @@ export class RunnerCharacter {
   private missMaiaLoaded = false;
   private missMaiaLoading = false;
   private usingMissMaia = false;
+  private onMissMaiaLoaded?: () => void;
 
   private readonly chains: FlowChain[] = [];
   private readonly locks: HairLock[] = [];
@@ -659,6 +660,7 @@ export class RunnerCharacter {
             this.missMaiaPivot.add(objWrap);
             this.missMaiaLoaded = true;
             this.syncMissMaiaVisibility();
+            this.onMissMaiaLoaded?.();
           },
           undefined,
           () => {
@@ -767,6 +769,13 @@ export class RunnerCharacter {
       this.ensureMissMaiaModelLoaded();
     }
     this.syncMissMaiaVisibility();
+  }
+
+  public setOnMissMaiaLoaded(cb?: () => void): void {
+    this.onMissMaiaLoaded = cb;
+    if (this.missMaiaLoaded) {
+      cb?.();
+    }
   }
 
   public setShieldActive(active: boolean): void {
