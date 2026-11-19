@@ -4,6 +4,8 @@ import {
   boxesOverlap,
   checkWallGateCollision,
   getRunnerAabb,
+  getTrainSupportY,
+  isNearMissDodge,
   isSideGrazeCollision,
 } from '../src/game/collisionMath.ts';
 
@@ -85,4 +87,28 @@ test('checkWallGateCollision allows passage across two-lane archway including ce
   assert.equal(checkWallGateCollision(betweenOpenLanesRunner, -30, 0.35, openLanes, laneWidth), false);
   assert.equal(checkWallGateCollision(rightRunner, -30, 0.35, openLanes, laneWidth), false);
   assert.equal(checkWallGateCollision(blockedLeftRunner, -30, 0.35, openLanes, laneWidth), true);
+});
+
+test('getTrainSupportY lifts runner along front ramp and sustains running on train roof', () => {
+  // Train at Z=-30, halfDepth=2.1 (front edge at Z=-27.9), rampLength=3.0 (ramp bottom at Z=-24.9)
+  const halfDepth = 2.1;
+  const halfWidth = 0.78;
+  const midRampY = getTrainSupportY(0, 1.0, -26.4, 0, -30, halfWidth, halfDepth, 2.8, true, 3.0);
+  assert.ok(midRampY > 1.2 && midRampY < 1.6);
+
+  const roofY = getTrainSupportY(0, 2.8, -30, 0, -30, halfWidth, halfDepth, 2.8, true, 3.0);
+  assert.equal(roofY, 2.8);
+
+  // Runner on ground at train side without jumping onto roof gets 0 support
+  const groundY = getTrainSupportY(0, 0, -30, 0, -30, halfWidth, halfDepth, 2.8, false, 3.0);
+  assert.equal(groundY, 0);
+});
+
+test('isNearMissDodge detects adjacent-lane train shave and tight barrier vault', () => {
+  // Adjacent lane shave beside train
+  assert.equal(isNearMissDodge(2.35, 0, -30, 0, -30, 0.78, 2.8, 2.1, 2.35), true);
+  // Vault cleanly above a low barrier
+  assert.equal(isNearMissDodge(0, 1.4, -20, 0, -20, 0.78, 1.04, 0.22, 2.35), true);
+  // Too far away in Z -> false
+  assert.equal(isNearMissDodge(2.35, 0, -10, 0, -30, 0.78, 2.8, 2.1, 2.35), false);
 });

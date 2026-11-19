@@ -1,15 +1,24 @@
 import React from 'react';
-import { HudSnapshot } from '../types/game';
-import { CoinIcon, HomeIcon, RestartIcon, SakuraIcon } from './Icons';
+import { GAME_CONSTANTS, HudSnapshot } from '../types/game';
+import { CoinIcon, GemIcon, HomeIcon, RestartIcon, SakuraIcon } from './Icons';
 
 interface GameOverModalProps {
   hud: HudSnapshot;
+  gemsBalance: number;
+  onRevive: () => void;
   onRestart: () => void;
   onHome: () => void;
 }
 
-export const GameOverModal: React.FC<GameOverModalProps> = ({ hud, onRestart, onHome }) => {
+export const GameOverModal: React.FC<GameOverModalProps> = ({
+  hud,
+  gemsBalance,
+  onRevive,
+  onRestart,
+  onHome,
+}) => {
   const earnedXp = Math.max(40, Math.floor(hud.distance / 8) + hud.coins * 2 + 60);
+  const canAffordRevive = hud.canRevive && gemsBalance >= GAME_CONSTANTS.REVIVE_GEM_COST;
 
   return (
     <div className="modal-backdrop">
@@ -42,13 +51,28 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ hud, onRestart, on
         </div>
 
         <div className="stat-box" style={{ width: '100%', textAlign: 'center' }}>
-          <span className="stat-label">Ton Record</span>
+          <span className="stat-label">Record · Frôlements : {hud.nearMissCount}</span>
           <span className="stat-value" style={{ color: '#38bdf8' }}>
             {hud.bestScore.toLocaleString('fr-FR')} pts
           </span>
         </div>
 
         <div className="modal-actions">
+          {hud.canRevive && (
+            <button
+              type="button"
+              className={`revive-cta ${canAffordRevive ? '' : 'disabled'}`}
+              disabled={!canAffordRevive}
+              onClick={onRevive}
+              data-testid="revive-button"
+            >
+              <GemIcon size={20} />
+              <span>
+                SECONDE CHANCE · {GAME_CONSTANTS.REVIVE_GEM_COST}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             className="play-cta"

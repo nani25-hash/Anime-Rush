@@ -1170,3 +1170,73 @@ export function getCompanionById(id: string): CompanionDefinition {
 export function getCarById(id: string): CarDefinition {
   return CAR_CATALOG.find((car) => car.id === id) ?? CAR_CATALOG[0];
 }
+
+export type UpgradeId = 'upgrade_magnet' | 'upgrade_car' | 'upgrade_shield' | 'upgrade_score';
+
+export interface UpgradeDefinition {
+  id: UpgradeId;
+  name: string;
+  description: string;
+  maxLevel: number;
+  baseCost: number;
+  costStep: number;
+  accent: string;
+  badgeColor: string;
+  getLevel: (p: PlayerProfile) => number;
+  getEffectSummary: (level: number) => string;
+}
+
+export const UPGRADE_CATALOG: UpgradeDefinition[] = [
+  {
+    id: 'upgrade_magnet',
+    name: 'Amélioration de l’Aimant à pièces',
+    description: 'Rallonge la durée de chaque Aimant Neko ramassé ou activé.',
+    maxLevel: 5,
+    baseCost: 600,
+    costStep: 800,
+    accent: '#38bdf8',
+    badgeColor: '#0284c7',
+    getLevel: (p) => Math.max(1, Math.min(5, p.upgradeMagnetLevel || 1)),
+    getEffectSummary: (lvl) => `${(11 + (lvl - 1) * 2.5).toFixed(1).replace('.0', '')}s`,
+  },
+  {
+    id: 'upgrade_car',
+    name: 'Amélioration du Cabriolet Turbo',
+    description: 'Prolonge l’autonomie du mode Voiture invincible à toit ouvert.',
+    maxLevel: 5,
+    baseCost: 700,
+    costStep: 900,
+    accent: '#f97316',
+    badgeColor: '#ea580c',
+    getLevel: (p) => Math.max(1, Math.min(5, p.upgradeCarLevel || 1)),
+    getEffectSummary: (lvl) => `${(10 + (lvl - 1) * 1.5).toFixed(1).replace('.0', '')}s`,
+  },
+  {
+    id: 'upgrade_shield',
+    name: 'Amélioration du Bouclier Dojo',
+    description: 'Prolonge l’invincibilité après impact et accélère la récupération.',
+    maxLevel: 5,
+    baseCost: 600,
+    costStep: 750,
+    accent: '#22c55e',
+    badgeColor: '#16a34a',
+    getLevel: (p) => Math.max(1, Math.min(5, p.upgradeShieldLevel || 1)),
+    getEffectSummary: (lvl) => `+${((lvl - 1) * 0.6).toFixed(1)}s`,
+  },
+  {
+    id: 'upgrade_score',
+    name: 'Amélioration du Multiplicateur x2',
+    description: 'Augmente définitivement votre score sur chaque mètre parcouru.',
+    maxLevel: 5,
+    baseCost: 800,
+    costStep: 1000,
+    accent: '#facc15',
+    badgeColor: '#ca8a04',
+    getLevel: (p) => Math.max(1, Math.min(5, p.upgradeScoreLevel || 1)),
+    getEffectSummary: (lvl) => `+${(lvl - 1) * 12}%`,
+  },
+];
+
+export function getUpgradeNextCost(def: UpgradeDefinition, currentLevel: number): number {
+  return def.baseCost + Math.max(0, currentLevel - 1) * def.costStep;
+}

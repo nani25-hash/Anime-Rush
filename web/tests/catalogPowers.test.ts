@@ -3,8 +3,10 @@ import test from 'node:test';
 import {
   CAR_CATALOG,
   HERO_CATALOG,
+  UPGRADE_CATALOG,
   getCarById,
   getHeroById,
+  getUpgradeNextCost,
 } from '../src/config/catalog.ts';
 
 test('roster contains at least 20 playable heroes including 8 canonical and Miss Maia', () => {
@@ -60,5 +62,24 @@ test('convertible car catalog includes Yellow Cab GT and distinct models with va
     assert.ok(car.perkLabel.length > 0, `Car ${car.id} missing perkLabel`);
     assert.ok(car.extraDurationSec >= 0);
     assert.ok(car.turboSpeedBonus >= 0);
+  }
+});
+
+test('permanent upgrade catalog exposes 4 upgrades with monotonic level 1 to 5 costs', () => {
+  assert.equal(UPGRADE_CATALOG.length, 4);
+
+  const ids = new Set(UPGRADE_CATALOG.map((u) => u.id));
+  assert.equal(ids.size, 4);
+
+  for (const upg of UPGRADE_CATALOG) {
+    assert.equal(upg.maxLevel, 5);
+    let prevCost = 0;
+    for (let lvl = 1; lvl < upg.maxLevel; lvl++) {
+      const cost = getUpgradeNextCost(upg, lvl);
+      assert.ok(cost > prevCost, `Cost for ${upg.id} level ${lvl} must increase`);
+      prevCost = cost;
+    }
+    assert.ok(upg.getEffectSummary(1).length > 0);
+    assert.ok(upg.getEffectSummary(5).length > 0);
   }
 });

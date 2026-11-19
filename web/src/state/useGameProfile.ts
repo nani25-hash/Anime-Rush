@@ -64,6 +64,9 @@ declare global {
       sendFriendGift?: (friendUid: string) => void;
       claimInboxMessage?: (messageId: string) => void;
       claimAllInbox?: () => void;
+      purchaseUpgrade?: (upgradeId: string, cost: number) => void;
+      spendGemsForRevive?: (cost: number) => void;
+      triggerHaptic?: (kind: 'light' | 'medium' | 'heavy') => void;
       signOut?: () => void;
     };
   }
@@ -90,6 +93,10 @@ const DEFAULT_FALLBACK_PROFILE: PlayerProfile = {
   unlockedHeroIds: ['ryu'],
   unlockedCompanionIds: ['shiba_classic'],
   unlockedCarIds: ['yellow_cab_gt'],
+  upgradeMagnetLevel: 1,
+  upgradeCarLevel: 1,
+  upgradeShieldLevel: 1,
+  upgradeScoreLevel: 1,
   collectionIds: ['card_tokyo_rails'],
   inventoryMagnets: 1,
   inventoryShields: 1,
@@ -155,6 +162,8 @@ export interface GameProfileActions {
   sendFriendGift: (friendUid: string) => void;
   claimInboxMessage: (messageId: string) => void;
   claimAllInbox: () => void;
+  purchaseUpgrade: (upgradeId: string, cost: number) => void;
+  spendGemsForRevive: (cost: number) => void;
   signOut: () => void;
   clearChestReward: () => void;
   clearToast: () => void;
@@ -431,6 +440,37 @@ export function useGameProfile(): {
     window.AndroidBridge?.claimAllInbox?.();
   }, []);
 
+  const purchaseUpgrade = useCallback((upgradeId: string, cost: number) => {
+    if (window.AndroidBridge?.purchaseUpgrade) {
+      window.AndroidBridge.purchaseUpgrade(upgradeId, cost);
+    } else {
+      setProfile((p) => {
+        if (p.coins < cost) return p;
+        const field =
+          upgradeId === 'upgrade_magnet'
+            ? 'upgradeMagnetLevel'
+            : upgradeId === 'upgrade_car'
+              ? 'upgradeCarLevel'
+              : upgradeId === 'upgrade_shield'
+                ? 'upgradeShieldLevel'
+                : 'upgradeScoreLevel';
+        const cur = p[field];
+        if (cur >= 5) return p;
+        return { ...p, coins: p.coins - cost, [field]: cur + 1 };
+      });
+      setToastMessage('Amélioration renforcée (aperçu) !');
+    }
+  }, []);
+
+  const spendGemsForRevive = useCallback((cost: number) => {
+    if (window.AndroidBridge?.spendGemsForRevive) {
+      window.AndroidBridge.spendGemsForRevive(cost);
+    } else {
+      setProfile((p) => (p.gems >= cost ? { ...p, gems: p.gems - cost } : p));
+      setToastMessage('Seconde chance activée !');
+    }
+  }, []);
+
   const signOut = useCallback(() => {
     window.AndroidBridge?.signOut?.();
   }, []);
@@ -497,6 +537,8 @@ export function useGameProfile(): {
       sendFriendGift,
       claimInboxMessage,
       claimAllInbox,
+      purchaseUpgrade,
+      spendGemsForRevive,
       signOut,
       clearChestReward,
       clearToast,

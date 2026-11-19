@@ -100,6 +100,12 @@ export interface HudSnapshot {
   heroPowerReady: boolean;
   heroPowerActiveRemaining: number;
   heroPassiveSummary: string;
+  // Near-miss, Biome & Revive
+  nearMissCount: number;
+  nearMissLabel: string | null;
+  biomeName: string;
+  canRevive: boolean;
+  revivedUsed: boolean;
 }
 
 export interface PlayerProfile {
@@ -123,6 +129,10 @@ export interface PlayerProfile {
   unlockedHeroIds: string[];
   unlockedCompanionIds: string[];
   unlockedCarIds: string[];
+  upgradeMagnetLevel: number;
+  upgradeCarLevel: number;
+  upgradeShieldLevel: number;
+  upgradeScoreLevel: number;
   collectionIds: string[];
   inventoryMagnets: number;
   inventoryShields: number;
@@ -270,12 +280,14 @@ export const GAME_CONSTANTS = {
   FUEL_CAN_UNITS: 20,
   CAR_TURBO_DURATION_SEC: 10.0,
   CAR_TURBO_SPEED: 30.5,
+  REVIVE_GEM_COST: 15,
 } as const;
 
 const STORAGE_KEYS = {
   BEST_SCORE: 'anime_rush_best_score_v1',
   QUALITY: 'anime_rush_quality_v1',
   MUTED: 'anime_rush_muted_v1',
+  HAPTICS: 'anime_rush_haptics_v1',
 } as const;
 
 export function loadBestScore(): number {
@@ -327,6 +339,23 @@ export function loadSavedMuted(): boolean {
 export function saveMuted(muted: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEYS.MUTED, muted ? '1' : '0');
+  } catch {
+    // Ignore
+  }
+}
+
+export function loadSavedHaptics(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.HAPTICS);
+    return raw !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveHaptics(enabled: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.HAPTICS, enabled ? '1' : '0');
   } catch {
     // Ignore
   }

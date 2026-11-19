@@ -3,9 +3,12 @@ import {
   CAR_CATALOG,
   COMPANION_CATALOG,
   HERO_CATALOG,
+  UPGRADE_CATALOG,
+  UpgradeId,
   getCarById,
   getCompanionById,
   getHeroById,
+  getUpgradeNextCost,
 } from '../config/catalog';
 import { PreviewMode, PreviewStage3D } from '../game/PreviewStage3D';
 import { PlayerProfile } from '../types/game';
@@ -15,6 +18,7 @@ import {
   CloseIcon,
   CoinIcon,
   GemIcon,
+  MagnetIcon,
   ShieldIcon,
 } from './Icons';
 
@@ -28,7 +32,23 @@ interface HeroesModalProps {
     currency: 'coins' | 'gems',
     cost: number,
   ) => void;
+  onPurchaseUpgrade: (upgradeId: string, cost: number) => void;
   onClose: () => void;
+}
+
+type ShowroomTab = PreviewMode | 'upgrades';
+
+function renderUpgradeIcon(id: UpgradeId): React.ReactNode {
+  switch (id) {
+    case 'upgrade_magnet':
+      return <MagnetIcon size={34} />;
+    case 'upgrade_car':
+      return <CarIcon size={36} />;
+    case 'upgrade_shield':
+      return <ShieldIcon size={34} />;
+    case 'upgrade_score':
+      return <BoltIcon size={34} />;
+  }
 }
 
 type HeroFilter =
@@ -53,9 +73,10 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
   onEquip,
   onEquipCar,
   onBuyCharacter,
+  onPurchaseUpgrade,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<PreviewMode>('heroes');
+  const [subTab, setSubTab] = useState<ShowroomTab>('heroes');
   const [previewHeroId, setPreviewHeroId] = useState<string>(profile.equippedHeroId);
   const [previewCarId, setPreviewCarId] = useState<string>(profile.equippedCarId);
   const [previewCompId, setPreviewCompId] = useState<string>(profile.equippedCompanionId);
@@ -75,7 +96,7 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
       stage = new PreviewStage3D(
         canvas,
         {
-          mode: subTab,
+          mode: 'heroes',
           heroId: previewHeroId,
           carId: previewCarId,
           companionId: previewCompId,
@@ -108,12 +129,14 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (subTab === 'upgrades') return;
     stageRef.current?.setSelection({
       mode: subTab,
       heroId: previewHeroId,
       carId: previewCarId,
       companionId: previewCompId,
     });
+    requestAnimationFrame(() => stageRef.current?.resizeToContainer());
   }, [subTab, previewHeroId, previewCarId, previewCompId]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -282,8 +305,8 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
           </div>
         </header>
 
-        {/* Upper Interactive 3D Brick Showroom */}
-        <section className="showroom-stage">
+        {/* Upper Interactive 3D Brick Showroom (kept mounted, hidden when on Upgrades tab) */}
+        <section className={`showroom-stage ${subTab === 'upgrades' ? 'is-hidden' : ''}`}>
           <div className="showroom-title-block">
             <div className="showroom-name-row">
               <h2 className="showroom-item-title">{activeItemState.name}</h2>
@@ -353,7 +376,9 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
         </section>
 
         {/* Search & Filter Strip */}
-        <section className="showroom-controls-bar">
+        <section
+          className={`showroom-controls-bar ${subTab === 'upgrades' ? 'is-hidden' : ''}`}
+        >
           {subTab !== 'companions' ? (
             <div className="showroom-search-row">
               <input
@@ -530,6 +555,82 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
               })}
             </div>
           )}
+          {subTab === 'upgrades' && (
+            <div className="upgrades-panel" data-testid="upgrades-panel">
+              <div className="upgrades-header-block">
+                <h2 className="upgrades-title">AMÉLIORATIONS</h2>
+                <p className="upgrades-sub">
+                  Renforce définitivement la durée et l’efficacité de tes bonus
+                </p>
+              </div>
+
+              <div className="upgrades-list">
+                {UPGRADE_CATALOG.map((upg) => {
+                  const level = upg.getLevel(profile);
+                  const isMax = level >= upg.maxLevel;
+                  const nextCost = getUpgradeNextCost(upg, level);
+                  const canAfford = profile.coins >= nextCost;
+
+                  return (
+                    <div
+                      key={upg.id}
+                      className="upgrade-card"
+                      data-testid={`upgrade-card-${upg.id}`}
+                    >
+                      <div className="upgrade-top-row">
+                        <div
+                          className="upgrade-icon-badge"
+                          style={{ borderColor: upg.accent }}
+                        >
+                          {renderUpgradeIcon(upg.id)}
+                        </div>
+                        <div className="upgrade-meta">
+                          <h3 className="upgrade-name">{upg.name}</h3>
+                          <p className="upgrade-desc">{upg.description}</p>
+                          <div className="upgrade-meter-row">
+                            <div className="upgrade-segments" aria-label={`Niveau ${level} sur ${upg.maxLevel}`}>
+                              {Array.from({ length: upg.maxLevel }, (_, idx) => (
+                                <span
+                                  key={idx}
+                                  className={`upgrade-seg ${idx < level ? 'filled' : ''}`}
+                                />
+                              ))}
+                            </div>
+                            <span className="upgrade-stat-pill tabular">
+                              {upg.getEffectSummary(level)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="upgrade-footer">
+                        {isMax ? (
+                          <div className="upgrade-max-banner">
+                            <span>Amélioration terminée !</span>
+                            <span className="upgrade-check-pill">✓</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`upgrade-buy-btn ${canAfford ? '' : 'disabled'}`}
+                            disabled={!canAfford}
+                            onClick={() => onPurchaseUpgrade(upg.id, nextCost)}
+                            data-testid={`buy-${upg.id}`}
+                          >
+                            <span>AMÉLIORER · NIV. {level + 1}</span>
+                            <span className="upgrade-cost-tag tabular">
+                              <CoinIcon size={15} />
+                              {nextCost.toLocaleString('fr-FR')}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Bottom Folder Tab Switcher + Red Circular Close Button */}
@@ -544,7 +645,7 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
               }}
               data-testid="tab-heroes"
             >
-              Personnages ({HERO_CATALOG.length})
+              Héros ({HERO_CATALOG.length})
             </button>
             <button
               type="button"
@@ -567,6 +668,17 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
               data-testid="tab-companions"
             >
               Shiba ({COMPANION_CATALOG.length})
+            </button>
+            <button
+              type="button"
+              className={`showroom-folder-tab ${subTab === 'upgrades' ? 'active' : ''}`}
+              onClick={() => {
+                setSubTab('upgrades');
+                setSearchQuery('');
+              }}
+              data-testid="tab-upgrades"
+            >
+              Améliorations
             </button>
           </div>
 

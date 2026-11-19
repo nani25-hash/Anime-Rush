@@ -4,6 +4,8 @@ import {
   boxesOverlap,
   checkWallGateCollision,
   getRunnerAabb,
+  getTrainSupportY,
+  isNearMissDodge,
   isSideGrazeCollision,
 } from './collisionMath';
 import {
@@ -25,6 +27,9 @@ export interface PooledObstacle {
   active: boolean;
   triggered: boolean;
   passSoundPlayed: boolean;
+  nearMissAwarded: boolean;
+  hasRamp: boolean;
+  rampMesh?: THREE.Mesh;
   lane: LaneIndex;
   openLanes: LaneIndex[];
   speed: number;
@@ -346,7 +351,7 @@ export class ObstacleAndCoinPools {
         this.createHighBeam(scene, darkMetalMat, cyanSignalMat, highVoltageMat, shadowMat),
       );
     }
-    // 14 dynamic moving metro trains (varying lengths & speeds, zero static trains!)
+    // 14 dynamic moving metro trains (half with front rooftop ramps, zero static trains!)
     for (let i = 0; i < 14; i++) {
       this.obstacles.push(
         this.createMovingRushTrain(
@@ -356,9 +361,11 @@ export class ObstacleAndCoinPools {
           trainRoofMat,
           darkMetalMat,
           headlightMat,
+          hazardBarMat,
           shadowMat,
           i % 2 === 0 ? 4.4 : 6.4,
           i % 2 === 0 ? 11.4 : 9.8,
+          i % 2 === 1,
         ),
       );
     }
@@ -557,6 +564,8 @@ export class ObstacleAndCoinPools {
       active: false,
       triggered: false,
       passSoundPlayed: false,
+      nearMissAwarded: false,
+      hasRamp: false,
       lane: 0,
       openLanes: [],
       speed: 0,
@@ -617,6 +626,8 @@ export class ObstacleAndCoinPools {
       active: false,
       triggered: false,
       passSoundPlayed: false,
+      nearMissAwarded: false,
+      hasRamp: false,
       lane: 0,
       openLanes: [],
       speed: 0,
@@ -635,9 +646,11 @@ export class ObstacleAndCoinPools {
     trainRoofMat: THREE.Material,
     darkMat: THREE.Material,
     headlightMat: THREE.Material,
+    rampMat: THREE.Material,
     shadowMat: THREE.Material,
     trainLength = 4.4,
     trainSpeed = 11.2,
+    hasRamp = false,
   ): PooledObstacle {
     const group = new THREE.Group();
     const halfLen = trainLength * 0.5;
@@ -648,7 +661,9 @@ export class ObstacleAndCoinPools {
     const lampGeo = new THREE.BoxGeometry(0.32, 0.24, 0.16);
     const wheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 1.72, 12);
     wheelGeo.rotateZ(Math.PI / 2);
-    const shadowGeo = new THREE.PlaneGeometry(2.3, trainLength + 0.35);
+    const shadowGeo = new THREE.PlaneGeometry(2.3, trainLength + (hasRamp ? 3.2 : 0.35));
+    // Sloped ramp deck (~3.0m horizontal run, 2.75m climb -> length ~4.07m)
+    const rampGeo = new THREE.BoxGeometry(1.66, 0.14, 4.1);
     this.sharedDisposables.push(
       chassisGeo,
       cabinGeo,
@@ -657,6 +672,7 @@ export class ObstacleAndCoinPools {
       lampGeo,
       wheelGeo,
       shadowGeo,
+      rampGeo,
     );
 
     const bodyMats = [
@@ -687,6 +703,15 @@ export class ObstacleAndCoinPools {
     const rightLamp = new THREE.Mesh(lampGeo, headlightMat);
     rightLamp.position.set(0.54, 0.88, halfLen - 0.04);
 
+    let rampMesh: THREE.Mesh | undefined;
+    if (hasRamp) {
+      rampMesh = new THREE.Mesh(rampGeo, rampMat);
+      rampMesh.position.set(0, 1.38, halfLen + 1.4);
+      rampMesh.rotation.x = Math.atan2(2.75, 3.0);
+      rampMesh.castShadow = true;
+      group.add(rampMesh);
+    }
+
     const wheels: THREE.Mesh[] = [];
     const axleZs =
       trainLength > 5.0
@@ -702,6 +727,7 @@ export class ObstacleAndCoinPools {
     const shadow = new THREE.Mesh(shadowGeo, shadowMat);
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.025;
+    if (hasRamp) shadow.position.z = 1.4;
 
     group.add(chassis, cabin, roof, acUnit, leftLamp, rightLamp, shadow);
     group.visible = false;
@@ -713,6 +739,9 @@ export class ObstacleAndCoinPools {
       active: false,
       triggered: false,
       passSoundPlayed: false,
+      nearMissAwarded: false,
+      hasRamp,
+      rampMesh,
       lane: 0,
       openLanes: [],
       speed: trainSpeed,
@@ -836,6 +865,8 @@ export class ObstacleAndCoinPools {
       active: false,
       triggered: false,
       passSoundPlayed: false,
+      nearMissAwarded: false,
+      hasRamp: false,
       lane: 0,
       openLanes: [0],
       speed: 0,
@@ -855,6 +886,7 @@ export class ObstacleAndCoinPools {
       obs.active = false;
       obs.triggered = false;
       obs.passSoundPlayed = false;
+      obs.nearMissAwarded = false;
       obs.mesh.visible = false;
     }
     for (const coin of this.coins) {
@@ -1103,7 +1135,10 @@ export class ObstacleAndCoinPools {
       this.activateObstacle(kind, laneB, kind === 'MOVING_CART' ? z - 5 : z);
       this.spawnCoinLine(openLane, z + 4, 5, 2.2, 1.0);
     } else if (roll < 0.48) {
-      this.activateObstacle('MOVING_CART', laneB, z - 5.5);
+      const rampTrain = this.activateObstacle('MOVING_CART', laneB, z - 5.5, true);
+      if (rampTrain?.hasRamp) {
+        this.spawnCoinLine(laneB, z + 1.5, 4, 2.2, 3.65);
+      }
       if (difficulty > 0.15 || Math.random() < 0.68) {
         const secondKind: ObstacleKind = Math.random() < 0.5 ? 'MOVING_CART' : 'LOW_BARRIER';
         this.activateObstacle(secondKind, laneC, secondKind === 'MOVING_CART' ? z - 7.5 : z);
@@ -1124,7 +1159,10 @@ export class ObstacleAndCoinPools {
       }
       this.spawnCoinLine(openLane, z + 3.2, 4, 2.1, 0.52);
     } else {
-      this.activateObstacle('MOVING_CART', laneB, z - 5);
+      const rampLeft = this.activateObstacle('MOVING_CART', laneB, z - 5, true);
+      if (rampLeft?.hasRamp) {
+        this.spawnCoinLine(laneB, z + 1.8, 3, 2.2, 3.65);
+      }
       this.activateObstacle('MOVING_CART', laneC, z - 8.5);
       this.spawnCoinLine(openLane, z + 3.5, 5, 2.2, 1.0);
     }
@@ -1145,16 +1183,26 @@ export class ObstacleAndCoinPools {
     this.nextSpawnZ -= minGap + Math.random() * (maxGap - minGap);
   }
 
-  private activateObstacle(kind: ObstacleKind, lane: LaneIndex, z: number): void {
-    const item = this.obstacles.find((o) => !o.active && o.kind === kind);
-    if (!item) return;
+  private activateObstacle(
+    kind: ObstacleKind,
+    lane: LaneIndex,
+    z: number,
+    preferRamp = false,
+  ): PooledObstacle | undefined {
+    const item =
+      (preferRamp
+        ? this.obstacles.find((o) => !o.active && o.kind === kind && o.hasRamp)
+        : undefined) ?? this.obstacles.find((o) => !o.active && o.kind === kind);
+    if (!item) return undefined;
     item.active = true;
     item.triggered = false;
     item.passSoundPlayed = false;
+    item.nearMissAwarded = false;
     item.lane = lane;
     item.z = z;
     item.mesh.position.set(lane * GAME_CONSTANTS.LANE_WIDTH, 0, z);
     item.mesh.visible = true;
+    return item;
   }
 
   private activateWallGate(
@@ -1257,6 +1305,28 @@ export class ObstacleAndCoinPools {
     pu.mesh.visible = true;
   }
 
+  public getSupportFloorY(runnerX: number, runnerY: number, runnerZ: number): number {
+    let supportY = 0;
+    for (const obs of this.obstacles) {
+      if (!obs.active || obs.kind !== 'MOVING_CART') continue;
+      const obsX = obs.lane * GAME_CONSTANTS.LANE_WIDTH;
+      const y = getTrainSupportY(
+        runnerX,
+        runnerY,
+        runnerZ,
+        obsX,
+        obs.z,
+        obs.halfWidth,
+        obs.halfDepth,
+        obs.maxY,
+        obs.hasRamp,
+        3.0,
+      );
+      if (y > supportY) supportY = y;
+    }
+    return supportY;
+  }
+
   public checkCollisions(
     runnerX: number,
     runnerY: number,
@@ -1271,10 +1341,12 @@ export class ObstacleAndCoinPools {
     sakuraCollected: number;
     fuelCollected: number;
     pickedPowerup: PowerupKind | null;
+    nearMisses: number;
   } {
     const runnerBox = getRunnerAabb(runnerX, runnerY, runnerZ, isSliding);
 
     let hitKind: ObstacleHitKind = 'NONE';
+    let nearMisses = 0;
     if (!skipObstacles) {
       for (const obs of this.obstacles) {
         if (!obs.active) continue;
@@ -1296,6 +1368,14 @@ export class ObstacleAndCoinPools {
         }
 
         const obsX = obs.lane * GAME_CONSTANTS.LANE_WIDTH;
+        const onTrainRoofOrRamp =
+          obs.kind === 'MOVING_CART' &&
+          (runnerY >= obs.maxY - 0.55 ||
+            (obs.hasRamp &&
+              runnerZ >= obs.z + obs.halfDepth - 0.15 &&
+              runnerZ <= obs.z + obs.halfDepth + 3.15 &&
+              Math.abs(runnerX - obsX) <= obs.halfWidth + 0.24));
+
         const obsBox = {
           minX: obsX - obs.halfWidth,
           maxX: obsX + obs.halfWidth,
@@ -1304,7 +1384,7 @@ export class ObstacleAndCoinPools {
           minZ: obs.z - obs.halfDepth,
           maxZ: obs.z + obs.halfDepth,
         };
-        if (boxesOverlap(runnerBox, obsBox)) {
+        if (!onTrainRoofOrRamp && boxesOverlap(runnerBox, obsBox)) {
           const hitFrontOfMovingCart =
             obs.kind === 'MOVING_CART' && runnerZ >= obs.z + obs.halfDepth - 0.45;
           if (
@@ -1319,6 +1399,26 @@ export class ObstacleAndCoinPools {
             this.emitBurst(runnerX, (runnerBox.minY + runnerBox.maxY) * 0.5, runnerZ, 22, 0xff4444);
           }
           break;
+        }
+
+        if (
+          !obs.nearMissAwarded &&
+          !onTrainRoofOrRamp &&
+          isNearMissDodge(
+            runnerX,
+            runnerY,
+            runnerZ,
+            obsX,
+            obs.z,
+            obs.halfWidth,
+            obs.maxY,
+            obs.halfDepth,
+            GAME_CONSTANTS.LANE_WIDTH,
+          )
+        ) {
+          obs.nearMissAwarded = true;
+          nearMisses++;
+          this.emitBurst(runnerX, runnerY + 0.9, runnerZ, 8, 0x38bdf8);
         }
       }
     }
@@ -1386,7 +1486,7 @@ export class ObstacleAndCoinPools {
       }
     }
 
-    return { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup };
+    return { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup, nearMisses };
   }
 
   private emitBurst(x: number, y: number, z: number, count: number, hexColor: number): void {

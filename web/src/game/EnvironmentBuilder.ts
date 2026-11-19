@@ -417,10 +417,18 @@ export class EnvironmentBuilder {
   private readonly sharedDisposables: Array<{ dispose: () => void }> = [];
   private readonly geoCache = new GeoCache();
   private readonly roofCache = new Map<string, THREE.BufferGeometry>();
+  private readonly scene: THREE.Scene;
   private readonly mats: Record<string, THREE.Material> = {};
+  private blossomMatRef: THREE.MeshStandardMaterial | null = null;
+  private haloBandMatRef: THREE.MeshBasicMaterial | null = null;
+  private readonly targetBgColor = new THREE.Color(0x1f2856);
+  private readonly targetFogColor = new THREE.Color(0x3b3d75);
+  private readonly targetBlossomEmissive = new THREE.Color(0x6a2650);
+  private readonly targetBandColor = new THREE.Color(0.55, 0.45, 0.95);
   private time = 0;
 
   constructor(scene: THREE.Scene, curveUniforms: WorldCurveUniforms) {
+    this.scene = scene;
     const L = GAME_CONSTANTS.SEGMENT_LENGTH;
     const HALF = GAME_CONSTANTS.ROAD_WIDTH * 0.5;
 
@@ -495,6 +503,7 @@ export class EnvironmentBuilder {
       emissive: 0x6a2650,
       emissiveIntensity: 0.55,
     });
+    this.blossomMatRef = blossomMat;
     const foliageMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
     const goldMat = new THREE.MeshStandardMaterial({
       color: 0xf2c14e,
@@ -862,12 +871,49 @@ export class EnvironmentBuilder {
       depthWrite: false,
       fog: false,
     });
+    this.haloBandMatRef = bandMat;
     this.sharedDisposables.push(bandGeo, bandMat);
     const band = new THREE.Mesh(bandGeo, bandMat);
     band.position.set(0, 6, -120);
     this.backdropGroup.add(band);
 
     scene.add(this.backdropGroup);
+  }
+
+  public setBiomeDistance(distanceMeters: number, dt: number): string {
+    const cycle = Math.floor(Math.max(0, distanceMeters) / 500) % 3;
+    let biomeName = 'Sakura Ueno';
+    if (cycle === 0) {
+      biomeName = 'Sakura Ueno';
+      this.targetBgColor.setHex(0x1f2856);
+      this.targetFogColor.setHex(0x3b3d75);
+      this.targetBlossomEmissive.setHex(0x6a2650);
+      this.targetBandColor.setRGB(0.55, 0.45, 0.95);
+    } else if (cycle === 1) {
+      biomeName = 'Akihabara Cyber';
+      this.targetBgColor.setHex(0x09132e);
+      this.targetFogColor.setHex(0x164e63);
+      this.targetBlossomEmissive.setHex(0x0e7490);
+      this.targetBandColor.setRGB(0.15, 0.82, 0.98);
+    } else {
+      biomeName = 'Mont Fuji Crépuscule';
+      this.targetBgColor.setHex(0x38132d);
+      this.targetFogColor.setHex(0x7c2d12);
+      this.targetBlossomEmissive.setHex(0x9a3412);
+      this.targetBandColor.setRGB(0.98, 0.52, 0.28);
+    }
+
+    const lerpRate = Math.min(1, dt * 1.4);
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.lerp(this.targetBgColor, lerpRate);
+    }
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.lerp(this.targetFogColor, lerpRate);
+    }
+    this.blossomMatRef?.emissive.lerp(this.targetBlossomEmissive, lerpRate);
+    this.haloBandMatRef?.color.lerp(this.targetBandColor, lerpRate);
+
+    return biomeName;
   }
 
   public applyQuality(preset: QualityPreset): void {

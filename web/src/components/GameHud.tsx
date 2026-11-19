@@ -59,6 +59,9 @@ export const GameHud: React.FC<GameHudProps> = ({
             <div className="hud-chip hud-speed-chip">
               <span>{hud.speedMultiplier.toFixed(1)}x</span>
             </div>
+            <div className="hud-chip hud-biome-chip" data-testid="biome-chip">
+              <span>{hud.biomeName}</span>
+            </div>
             {hud.magnetRemaining > 0 && (
               <div className="hud-chip hud-powerup-chip">
                 <MagnetIcon size={14} />
@@ -105,6 +108,11 @@ export const GameHud: React.FC<GameHudProps> = ({
       </div>
 
       {hud.milestoneLabel && <div className="milestone-banner">{hud.milestoneLabel}</div>}
+      {hud.nearMissLabel && (
+        <div className="nearmiss-banner" data-testid="nearmiss-banner">
+          {hud.nearMissLabel}
+        </div>
+      )}
 
       {/* Bottom Zone: Tactical Action Buttons + Milestone Progress Bar */}
       <div className="hud-bottom-dock">

@@ -99,3 +99,78 @@ export function checkWallGateCollision(
 
   return true;
 }
+
+/**
+ * Computes the vertical support floor height (0..trainRoofY) provided by a train roof
+ * or an attached front incline ramp. Allows running up ramps and across train roofs.
+ */
+export function getTrainSupportY(
+  runnerX: number,
+  runnerY: number,
+  runnerZ: number,
+  trainX: number,
+  trainZ: number,
+  halfWidth: number,
+  halfDepth: number,
+  trainRoofY = 2.8,
+  hasRamp = false,
+  rampLength = 3.0,
+): number {
+  if (Math.abs(runnerX - trainX) > halfWidth + 0.24) {
+    return 0;
+  }
+
+  // Riding on top of the train roof deck
+  if (
+    runnerZ >= trainZ - halfDepth - 0.18 &&
+    runnerZ <= trainZ + halfDepth + 0.18 &&
+    runnerY >= trainRoofY - 0.55
+  ) {
+    return trainRoofY;
+  }
+
+  // Climbing up or descending along the sloped front ramp (+Z side)
+  if (hasRamp && rampLength > 0.1) {
+    const rampTopZ = trainZ + halfDepth;
+    const rampBottomZ = rampTopZ + rampLength;
+    if (runnerZ >= rampTopZ - 0.12 && runnerZ <= rampBottomZ + 0.15) {
+      const progress = Math.min(1, Math.max(0, (rampBottomZ - runnerZ) / rampLength));
+      const rampSurfaceY = progress * trainRoofY;
+      if (runnerY >= rampSurfaceY - 0.65) {
+        return rampSurfaceY;
+      }
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Detects a close-call "frôlement" dodge when passing an obstacle cleanly in an adjacent lane
+ * or clearing cleanly above a low barrier.
+ */
+export function isNearMissDodge(
+  runnerX: number,
+  runnerY: number,
+  runnerZ: number,
+  obsX: number,
+  obsZ: number,
+  obsHalfWidth: number,
+  obsMaxY: number,
+  obsHalfDepth: number,
+  laneWidth: number,
+): boolean {
+  if (Math.abs(runnerZ - obsZ) > obsHalfDepth + 0.5) {
+    return false;
+  }
+  const dx = Math.abs(runnerX - obsX);
+  // Adjacent lane close shave while running beside barrier/train
+  if (dx > obsHalfWidth + 0.12 && dx <= laneWidth + 0.32 && runnerY < obsMaxY + 0.35) {
+    return true;
+  }
+  // Tight jump vault just over a low barrier
+  if (obsMaxY <= 1.25 && dx <= obsHalfWidth + 0.25 && runnerY >= obsMaxY + 0.05 && runnerY <= obsMaxY + 1.3) {
+    return true;
+  }
+  return false;
+}

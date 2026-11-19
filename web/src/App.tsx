@@ -19,12 +19,15 @@ import { useGameProfile } from './state/useGameProfile';
 import {
   ActiveModal,
   BottomTab,
+  GAME_CONSTANTS,
   HudSnapshot,
   QualityLevel,
   RunTelemetry,
   loadBestScore,
+  loadSavedHaptics,
   loadSavedMuted,
   loadSavedQuality,
+  saveHaptics,
   saveMuted,
   saveQuality,
 } from './types/game';
@@ -37,6 +40,7 @@ export const App: React.FC = () => {
 
   const [quality, setQuality] = useState<QualityLevel>(() => loadSavedQuality());
   const [muted, setMuted] = useState<boolean>(() => loadSavedMuted());
+  const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() => loadSavedHaptics());
   const [engineError, setEngineError] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [hud, setHud] = useState<HudSnapshot>(() => ({
@@ -70,6 +74,11 @@ export const App: React.FC = () => {
     heroPowerReady: false,
     heroPowerActiveRemaining: 0,
     heroPassiveSummary: '+10% Score final en course',
+    nearMissCount: 0,
+    nearMissLabel: null,
+    biomeName: 'Sakura Ueno',
+    canRevive: true,
+    revivedUsed: false,
   }));
 
   const selectedBoostsRef = useRef(selectedBoosts);
@@ -166,7 +175,7 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync equipped 3D Hero + Shiba Companion + Convertible Car skins & best score/multiplier to 3D engine
+  // Sync equipped 3D Hero + Shiba Companion + Convertible Car skins, upgrades, haptics & stats to 3D engine
   useEffect(() => {
     engineRef.current?.setLoadout(
       profile.equippedHeroId,
@@ -178,6 +187,13 @@ export const App: React.FC = () => {
         ? profile.activeMultiplier
         : 1;
     engineRef.current?.setProfileStats(profile.bestScore, multActive);
+    engineRef.current?.setUpgrades(
+      profile.upgradeMagnetLevel,
+      profile.upgradeCarLevel,
+      profile.upgradeShieldLevel,
+      profile.upgradeScoreLevel,
+    );
+    engineRef.current?.setHapticsEnabled(hapticsEnabled);
   }, [
     profile.equippedHeroId,
     profile.equippedCompanionId,
@@ -185,6 +201,11 @@ export const App: React.FC = () => {
     profile.bestScore,
     profile.activeMultiplier,
     profile.multiplierExpiresAt,
+    profile.upgradeMagnetLevel,
+    profile.upgradeCarLevel,
+    profile.upgradeShieldLevel,
+    profile.upgradeScoreLevel,
+    hapticsEnabled,
   ]);
 
   // Pause idle 3D simulation while full-screen modal sheet is covering the viewport
@@ -243,6 +264,21 @@ export const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  const handleToggleHaptics = useCallback(() => {
+    setHapticsEnabled((prev) => {
+      const next = !prev;
+      saveHaptics(next);
+      engineRef.current?.setHapticsEnabled(next);
+      return next;
+    });
+  }, []);
+
+  const handleRevive = useCallback(() => {
+    if (profile.gems < GAME_CONSTANTS.REVIVE_GEM_COST) return;
+    actions.spendGemsForRevive(GAME_CONSTANTS.REVIVE_GEM_COST);
+    engineRef.current?.reviveRun();
+  }, [profile.gems, actions]);
 
   const handleOpenModal = useCallback((modal: ActiveModal) => {
     engineRef.current?.playUiSound();
@@ -352,7 +388,13 @@ export const App: React.FC = () => {
       )}
 
       {!engineError && hud.phase === 'GAME_OVER' && (
-        <GameOverModal hud={hud} onRestart={handleRestart} onHome={handleHome} />
+        <GameOverModal
+          hud={hud}
+          gemsBalance={profile.gems}
+          onRevive={handleRevive}
+          onRestart={handleRestart}
+          onHome={handleHome}
+        />
       )}
 
       {/* Lobby Functional Modals */}
@@ -381,6 +423,10 @@ export const App: React.FC = () => {
           onBuyCharacter={(itemType, itemId, currency, cost) => {
             engineRef.current?.playUnlockSound();
             actions.purchaseShopItem(itemType, itemId, currency, cost);
+          }}
+          onPurchaseUpgrade={(upgradeId, cost) => {
+            engineRef.current?.playUpgradeSound();
+            actions.purchaseUpgrade(upgradeId, cost);
           }}
           onClose={() => setActiveModal(null)}
         />
@@ -438,9 +484,11 @@ export const App: React.FC = () => {
           profile={profile}
           quality={quality}
           muted={muted}
+          hapticsEnabled={hapticsEnabled}
           onSaveDisplayName={actions.updateDisplayName}
           onQualityChange={handleQualityChange}
           onToggleMute={handleToggleMute}
+          onToggleHaptics={handleToggleHaptics}
           onClose={() => setActiveModal(null)}
         />
       )}

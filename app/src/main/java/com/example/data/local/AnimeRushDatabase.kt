@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
   entities = [LocalProfileEntity::class, LocalInboxEntity::class],
-  version = 2,
+  version = 3,
   exportSchema = false,
 )
 abstract class AnimeRushDatabase : RoomDatabase() {
@@ -30,6 +30,16 @@ abstract class AnimeRushDatabase : RoomDatabase() {
         }
       }
 
+    val MIGRATION_2_3 =
+      object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL("ALTER TABLE local_profile ADD COLUMN upgradeMagnetLevel INTEGER NOT NULL DEFAULT 1")
+          db.execSQL("ALTER TABLE local_profile ADD COLUMN upgradeCarLevel INTEGER NOT NULL DEFAULT 1")
+          db.execSQL("ALTER TABLE local_profile ADD COLUMN upgradeShieldLevel INTEGER NOT NULL DEFAULT 1")
+          db.execSQL("ALTER TABLE local_profile ADD COLUMN upgradeScoreLevel INTEGER NOT NULL DEFAULT 1")
+        }
+      }
+
     fun getInstance(context: Context): AnimeRushDatabase {
       return instance
         ?: synchronized(this) {
@@ -39,7 +49,7 @@ abstract class AnimeRushDatabase : RoomDatabase() {
                 AnimeRushDatabase::class.java,
                 "anime_rush_local.db",
               )
-              .addMigrations(MIGRATION_1_2)
+              .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
               .build()
               .also { instance = it }
         }

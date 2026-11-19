@@ -851,6 +851,87 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
     }
   }
 
+  suspend fun purchaseUpgrade(upgradeId: String, cost: Long): Result<PlayerProfile> {
+    return try {
+      require(cost > 0L) { "Coût invalide" }
+      val updated =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          if (current.coins < cost) {
+            throw IllegalStateException("Pièces insuffisantes")
+          }
+          val next =
+            when (upgradeId) {
+              "upgrade_magnet" -> {
+                if (current.upgradeMagnetLevel >= 5) throw IllegalStateException("Amélioration déjà au niveau max")
+                current.copy(
+                  upgradeMagnetLevel = current.upgradeMagnetLevel + 1,
+                  coins = current.coins - cost,
+                  updatedAtMs = System.currentTimeMillis(),
+                )
+              }
+              "upgrade_car" -> {
+                if (current.upgradeCarLevel >= 5) throw IllegalStateException("Amélioration déjà au niveau max")
+                current.copy(
+                  upgradeCarLevel = current.upgradeCarLevel + 1,
+                  coins = current.coins - cost,
+                  updatedAtMs = System.currentTimeMillis(),
+                )
+              }
+              "upgrade_shield" -> {
+                if (current.upgradeShieldLevel >= 5) throw IllegalStateException("Amélioration déjà au niveau max")
+                current.copy(
+                  upgradeShieldLevel = current.upgradeShieldLevel + 1,
+                  coins = current.coins - cost,
+                  updatedAtMs = System.currentTimeMillis(),
+                )
+              }
+              "upgrade_score" -> {
+                if (current.upgradeScoreLevel >= 5) throw IllegalStateException("Amélioration déjà au niveau max")
+                current.copy(
+                  upgradeScoreLevel = current.upgradeScoreLevel + 1,
+                  coins = current.coins - cost,
+                  updatedAtMs = System.currentTimeMillis(),
+                )
+              }
+              else -> throw IllegalArgumentException("Amélioration inconnue: $upgradeId")
+            }
+          dao.upsertProfile(next)
+          next.toPlayerProfile()
+        }
+      Result.success(updated)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun spendGemsForRevive(cost: Long): Result<PlayerProfile> {
+    return try {
+      require(cost > 0L) { "Coût invalide" }
+      val updated =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          if (current.gems < cost) {
+            throw IllegalStateException("Gemmes insuffisantes pour la seconde chance")
+          }
+          val next =
+            current.copy(
+              gems = current.gems - cost,
+              updatedAtMs = System.currentTimeMillis(),
+            )
+          dao.upsertProfile(next)
+          next.toPlayerProfile()
+        }
+      Result.success(updated)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
   private fun applyAccountXp(level: Long, xp: Long, xpToNext: Long): Triple<Long, Long, Long> {
     var curLvl = level.coerceAtLeast(1L)
     var curXp = xp.coerceAtLeast(0L)

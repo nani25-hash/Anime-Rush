@@ -32,6 +32,10 @@ data class PlayerProfile(
   val unlockedHeroIds: List<String> = listOf("ryu"),
   val unlockedCompanionIds: List<String> = listOf("shiba_classic"),
   val unlockedCarIds: List<String> = listOf("yellow_cab_gt"),
+  val upgradeMagnetLevel: Int = 1,
+  val upgradeCarLevel: Int = 1,
+  val upgradeShieldLevel: Int = 1,
+  val upgradeScoreLevel: Int = 1,
   val collectionIds: List<String> = listOf("card_tokyo_rails"),
   val inventoryMagnets: Long = 1L,
   val inventoryShields: Long = 1L,
@@ -83,6 +87,10 @@ data class PlayerProfile(
         "unlockedHeroIds" to unlockedHeroIds,
         "unlockedCompanionIds" to unlockedCompanionIds,
         "unlockedCarIds" to unlockedCarIds,
+        "upgradeMagnetLevel" to upgradeMagnetLevel,
+        "upgradeCarLevel" to upgradeCarLevel,
+        "upgradeShieldLevel" to upgradeShieldLevel,
+        "upgradeScoreLevel" to upgradeScoreLevel,
         "collectionIds" to collectionIds,
         "inventoryMagnets" to inventoryMagnets,
         "inventoryShields" to inventoryShields,
@@ -135,6 +143,10 @@ data class PlayerProfile(
       put("unlockedHeroIds", JSONArray(unlockedHeroIds))
       put("unlockedCompanionIds", JSONArray(unlockedCompanionIds))
       put("unlockedCarIds", JSONArray(unlockedCarIds))
+      put("upgradeMagnetLevel", upgradeMagnetLevel)
+      put("upgradeCarLevel", upgradeCarLevel)
+      put("upgradeShieldLevel", upgradeShieldLevel)
+      put("upgradeScoreLevel", upgradeScoreLevel)
       put("collectionIds", JSONArray(collectionIds))
       put("inventoryMagnets", inventoryMagnets)
       put("inventoryShields", inventoryShields)

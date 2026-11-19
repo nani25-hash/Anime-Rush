@@ -6,9 +6,11 @@ interface SettingsModalProps {
   profile: PlayerProfile;
   quality: QualityLevel;
   muted: boolean;
+  hapticsEnabled: boolean;
   onSaveDisplayName: (name: string) => void;
   onQualityChange: (q: QualityLevel) => void;
   onToggleMute: () => void;
+  onToggleHaptics: () => void;
   onClose: () => void;
 }
 
@@ -18,9 +20,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   profile,
   quality,
   muted,
+  hapticsEnabled,
   onSaveDisplayName,
   onQualityChange,
   onToggleMute,
+  onToggleHaptics,
   onClose,
 }) => {
   const [nameInput, setNameInput] = useState(profile.displayName);
@@ -86,6 +90,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button type="button" className="secondary-btn" onClick={onToggleMute}>
               <VolumeIcon muted={muted} size={18} />
               <span>{muted ? 'ACTIVER L’AUDIO' : 'COUPER L’AUDIO'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onToggleHaptics}
+              data-testid="toggle-haptics-button"
+            >
+              <span>
+                {hapticsEnabled
+                  ? 'VIBRATIONS HAPTIQUES : ACTIVÉES'
+                  : 'VIBRATIONS HAPTIQUES : DÉSACTIVÉES'}
+              </span>
             </button>
 
             <div className="subsection-block">

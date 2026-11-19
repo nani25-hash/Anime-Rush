@@ -240,6 +240,32 @@ export class SoundEngine {
     this.playChestOpen();
   }
 
+  public playNearMiss(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 560, 1120, 0.09, 'sine', 0.1, now);
+    this.tone(ctx, 880, 1320, 0.08, 'triangle', 0.06, now + 0.03);
+  }
+
+  public playRevive(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 523.25, 659.25, 0.14, 'triangle', 0.14, now);
+    this.tone(ctx, 659.25, 783.99, 0.14, 'triangle', 0.14, now + 0.08);
+    this.tone(ctx, 783.99, 1046.5, 0.24, 'sine', 0.16, now + 0.16);
+  }
+
+  public playUpgrade(): void {
+    if (this.playBuffer('unlock', 0.45, 1.12)) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 440, 660, 0.1, 'triangle', 0.12, now);
+    this.tone(ctx, 660, 990, 0.14, 'sine', 0.12, now + 0.06);
+  }
+
   private tone(
     ctx: AudioContext,
     startFreq: number,

@@ -120,6 +120,16 @@ export class AnimeRushEngine {
   private introSweepTimer = 0;
   private hudSyncAccumulator = 0;
 
+  // Permanent Upgrades (Lv 1-5), Haptics, Biomes, Near-Miss & Revive
+  private upgradeLevels = { magnet: 1, car: 1, shield: 1, score: 1 };
+  private hapticsEnabled = true;
+  private revivedUsed = false;
+  private nearMissCount = 0;
+  private nearMissBonusScore = 0;
+  private nearMissLabel: string | null = null;
+  private nearMissTimer = 0;
+  private currentBiomeName = 'Sakura Ueno';
+
   constructor(
     container: HTMLElement,
     initialQuality: QualityLevel,
@@ -255,6 +265,34 @@ export class AnimeRushEngine {
     }
   }
 
+  public setUpgrades(magnetLv: number, carLv: number, shieldLv: number, scoreLv: number): void {
+    this.upgradeLevels = {
+      magnet: Math.max(1, Math.min(5, magnetLv || 1)),
+      car: Math.max(1, Math.min(5, carLv || 1)),
+      shield: Math.max(1, Math.min(5, shieldLv || 1)),
+      score: Math.max(1, Math.min(5, scoreLv || 1)),
+    };
+  }
+
+  public setHapticsEnabled(enabled: boolean): void {
+    this.hapticsEnabled = enabled;
+  }
+
+  public playUpgradeSound(): void {
+    this.sound.unlock();
+    this.sound.playUpgrade();
+    this.triggerHaptic('light');
+  }
+
+  private triggerHaptic(kind: 'light' | 'medium' | 'heavy'): void {
+    if (!this.hapticsEnabled) return;
+    if (window.AndroidBridge?.triggerHaptic) {
+      window.AndroidBridge.triggerHaptic(kind);
+    } else if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(kind === 'heavy' ? 45 : kind === 'medium' ? 25 : 12);
+    }
+  }
+
   public setSimulationPaused(paused: boolean): void {
     this.simulationPaused = paused;
     if (!paused) {
@@ -288,9 +326,11 @@ export class AnimeRushEngine {
 
     this.sound.unlock();
     this.sound.playCarTurbo();
+    this.triggerHaptic('medium');
     this.fuelUnits = 0;
+    const upgradeExtraCar = (this.upgradeLevels.car - 1) * 1.5;
     const totalDuration =
-      GAME_CONSTANTS.CAR_TURBO_DURATION_SEC + this.equippedCar.extraDurationSec;
+      GAME_CONSTANTS.CAR_TURBO_DURATION_SEC + this.equippedCar.extraDurationSec + upgradeExtraCar;
     this.carRemaining = totalDuration;
     this.sakuraTokens += this.equippedCar.sakuraOnActivate;
     this.slideTimer = 0;
@@ -312,12 +352,14 @@ export class AnimeRushEngine {
 
     this.sound.unlock();
     this.sound.playPowerup();
+    this.triggerHaptic('medium');
     this.heroPowerCharge = 0;
     this.heroPowerActiveTimer = spec.activeDurationSec;
     this.runner.setPowerAuraActive(true, this.equippedHero.accentHex);
 
     const magnetBonus =
-      spec.passiveType === 'MAGNET_DURATION' ? spec.passiveValue : 0;
+      (spec.passiveType === 'MAGNET_DURATION' ? spec.passiveValue : 0) +
+      (this.upgradeLevels.magnet - 1) * 2.5;
 
     switch (spec.activeEffect) {
       case 'SHIELD_SURGE':
@@ -424,6 +466,28 @@ export class AnimeRushEngine {
     this.emitHud();
   }
 
+  public reviveRun(): void {
+    if (this.phase !== 'GAME_OVER' || this.revivedUsed) return;
+    this.sound.unlock();
+    this.sound.playRevive();
+    this.triggerHaptic('medium');
+    this.revivedUsed = true;
+    this.phase = 'PLAYING';
+    this.staminaLife = 2;
+    this.lifeRegenTimer = 0;
+    this.bumpInvulnTimer = 3.0;
+    this.runnerY = 0;
+    this.velocityY = 0;
+    this.isGrounded = true;
+    this.slideTimer = 0;
+    this.pools.destroyObstaclesAhead(this.runnerZ + 3, 38);
+    this.pools.emitBurstPublic(this.runnerX, 1.1, this.runnerZ, 26, 0xfacc15);
+    this.milestoneLabel = 'SECONDE CHANCE !';
+    this.milestoneTimer = 1.8;
+    this.lastFrameMs = performance.now();
+    this.emitHud();
+  }
+
   private resetRunState(boosts?: Partial<ActiveRunBoosts>): void {
     this.targetLane = 0;
     this.previousLane = 0;
@@ -444,7 +508,8 @@ export class AnimeRushEngine {
     const passive = this.equippedHero.power;
     const startShieldPassive = passive.passiveType === 'START_SHIELD';
     const magnetDurationBonus =
-      passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0;
+      (passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0) +
+      (this.upgradeLevels.magnet - 1) * 2.5;
 
     this.consumedMagnet = Boolean(boosts?.useMagnet);
     this.consumedShield = Boolean(boosts?.useShield);
@@ -467,6 +532,13 @@ export class AnimeRushEngine {
     this.invincibleSprintTimer = 0;
     this.overdriveMultFactor = 1;
     this.coinBonusAccumulator = 0;
+    this.revivedUsed = false;
+    this.nearMissCount = 0;
+    this.nearMissBonusScore = 0;
+    this.nearMissLabel = null;
+    this.nearMissTimer = 0;
+    this.currentBiomeName = 'Sakura Ueno';
+    this.environment.setBiomeDistance(0, 10);
 
     this.curveTargetX = 0;
     this.curveTargetY = 0;
@@ -519,6 +591,7 @@ export class AnimeRushEngine {
           this.previousLane = this.targetLane;
           this.targetLane = (this.targetLane - 1) as LaneIndex;
           this.sound.playLaneSwitch();
+          this.triggerHaptic('light');
         }
         break;
       case 'RIGHT':
@@ -526,6 +599,7 @@ export class AnimeRushEngine {
           this.previousLane = this.targetLane;
           this.targetLane = (this.targetLane + 1) as LaneIndex;
           this.sound.playLaneSwitch();
+          this.triggerHaptic('light');
         }
         break;
       case 'JUMP':
@@ -708,6 +782,24 @@ export class AnimeRushEngine {
       this.slideTimer = Math.max(0, this.slideTimer - dt);
     }
 
+    const isCarActive = this.carRemaining > 0;
+    const supportFloorY = isCarActive
+      ? 0
+      : this.pools.getSupportFloorY(this.runnerX, this.runnerY, this.runnerZ);
+
+    if (this.isGrounded) {
+      if (supportFloorY > this.runnerY + 0.01) {
+        // Climbing smoothly up a train ramp
+        this.runnerY = supportFloorY;
+      } else if (this.runnerY > supportFloorY + 0.14) {
+        // Stepped off the end of a train roof -> enter air fall with coyote grace
+        this.isGrounded = false;
+        this.coyoteTimer = GAME_CONSTANTS.COYOTE_TIME_SEC;
+      } else {
+        this.runnerY = supportFloorY;
+      }
+    }
+
     if (!this.isGrounded) {
       const gravity =
         this.velocityY < 0
@@ -715,8 +807,8 @@ export class AnimeRushEngine {
           : GAME_CONSTANTS.GRAVITY;
       this.velocityY -= gravity * dt;
       this.runnerY += this.velocityY * dt;
-      if (this.runnerY <= 0) {
-        this.runnerY = 0;
+      if (this.runnerY <= supportFloorY) {
+        this.runnerY = supportFloorY;
         this.velocityY = 0;
         this.isGrounded = true;
         this.runner.triggerLandSquash();
@@ -724,7 +816,6 @@ export class AnimeRushEngine {
       }
     }
 
-    const isCarActive = this.carRemaining > 0;
     this.runner.root.position.set(this.runnerX, this.runnerY, this.runnerZ);
     if (isCarActive) {
       this.car.root.position.set(this.runnerX, this.runnerY, this.runnerZ);
@@ -757,6 +848,13 @@ export class AnimeRushEngine {
     }
     this.updatePursuerAura();
 
+    const nextBiome = this.environment.setBiomeDistance(this.distance, dt);
+    if (nextBiome !== this.currentBiomeName) {
+      this.currentBiomeName = nextBiome;
+      this.milestoneLabel = `DISTRICT : ${nextBiome.toUpperCase()}`;
+      this.milestoneTimer = 2.0;
+    }
+
     this.environment.update(dt, this.runnerZ, this.worldSpeed);
     const magnetPullOn = this.magnetTimer > 0 || isCarActive;
     const poolFrame = this.pools.update(
@@ -775,7 +873,7 @@ export class AnimeRushEngine {
     const isChangingLane = Math.abs(this.runnerX - targetX) > 0.18;
     const canTakeBump = this.staminaLife >= 2 && this.bumpInvulnTimer <= 0;
 
-    const { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup } =
+    const { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup, nearMisses } =
       this.pools.checkCollisions(
         this.runnerX,
         this.runnerY,
@@ -806,6 +904,7 @@ export class AnimeRushEngine {
     if (sakuraCollected > 0) {
       this.sakuraTokens += sakuraCollected;
       this.sound.playPowerup();
+      this.triggerHaptic('light');
     }
 
     if (fuelCollected > 0) {
@@ -817,34 +916,65 @@ export class AnimeRushEngine {
       const wasReady = this.fuelUnits >= GAME_CONSTANTS.FUEL_MAX_UNITS;
       this.fuelUnits = Math.min(GAME_CONSTANTS.FUEL_MAX_UNITS, this.fuelUnits + addedFuel);
       this.sound.playPowerup();
+      this.triggerHaptic('light');
       if (!wasReady && this.fuelUnits >= GAME_CONSTANTS.FUEL_MAX_UNITS) {
         this.milestoneLabel = 'RÉSERVOIR PLEIN ! VOITURE PRÊTE';
         this.milestoneTimer = 1.8;
+        this.triggerHaptic('medium');
+      }
+    }
+
+    if (nearMisses > 0) {
+      this.nearMissCount += nearMisses;
+      this.nearMissBonusScore += nearMisses * 150;
+      if (this.heroPowerActiveTimer <= 0) {
+        this.heroPowerCharge = Math.min(
+          passive.chargeCostSec,
+          this.heroPowerCharge + passive.chargeCostSec * 0.1 * nearMisses,
+        );
+      }
+      this.nearMissLabel = `FRÔLEMENT ! +${nearMisses * 150} PTS · +10% POUVOIR`;
+      this.nearMissTimer = 1.3;
+      this.sound.playNearMiss();
+      this.triggerHaptic('light');
+    }
+
+    if (this.nearMissTimer > 0) {
+      this.nearMissTimer = Math.max(0, this.nearMissTimer - dt);
+      if (this.nearMissTimer === 0) {
+        this.nearMissLabel = null;
       }
     }
 
     const magDurBonus =
-      passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0;
+      (passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0) +
+      (this.upgradeLevels.magnet - 1) * 2.5;
     if (pickedPowerup === 'MAGNET') {
       this.magnetTimer = Math.max(this.magnetTimer, 11.0 + magDurBonus);
       this.milestoneLabel = 'AIMANT ACTIF !';
       this.milestoneTimer = 1.4;
       this.sound.playPowerup();
+      this.triggerHaptic('light');
     } else if (pickedPowerup === 'SHIELD') {
       this.hasShield = true;
       this.runner.setShieldActive(true);
       this.milestoneLabel = 'BOUCLIER DOJO !';
       this.milestoneTimer = 1.4;
       this.sound.playPowerup();
+      this.triggerHaptic('light');
     }
 
     const carScoreBonus = isCarActive ? this.equippedCar.scoreBonusRate : 0;
+    const upgradeScoreBonus = (this.upgradeLevels.score - 1) * 0.12;
     const scorePassiveBonus =
-      (passive.passiveType === 'SCORE_BOOST' ? 1 + passive.passiveValue : 1) + carScoreBonus;
+      (passive.passiveType === 'SCORE_BOOST' ? 1 + passive.passiveValue : 1) +
+      carScoreBonus +
+      upgradeScoreBonus;
     const effectiveMultiplier = this.scoreMultiplier * this.overdriveMultFactor;
     this.score = Math.floor(
       (this.distance * GAME_CONSTANTS.DISTANCE_SCORE_RATE +
-        this.coins * GAME_CONSTANTS.COIN_SCORE_VALUE) *
+        this.coins * GAME_CONSTANTS.COIN_SCORE_VALUE +
+        this.nearMissBonusScore) *
         effectiveMultiplier *
         scorePassiveBonus,
     );
@@ -873,28 +1003,35 @@ export class AnimeRushEngine {
       this.pools.emitBurstPublic(this.runnerX, 1.2, this.runnerZ, 20, 0xf97316);
       this.shakeIntensity = 0.25;
       this.sound.playBump();
+      this.triggerHaptic('medium');
     } else if (hitKind === 'CRASH' && this.hasShield) {
       this.hasShield = false;
       this.runner.setShieldActive(false);
-      this.bumpInvulnTimer = 1.25;
+      this.bumpInvulnTimer = 1.25 + (this.upgradeLevels.shield - 1) * 0.6;
       this.pools.clearObstacleNearZ(this.runnerZ);
       this.pools.emitBurstPublic(this.runnerX, 1.1, this.runnerZ, 20, 0x38bdf8);
       this.shakeIntensity = 0.35;
       this.milestoneLabel = 'BOUCLIER BRISÉ !';
       this.milestoneTimer = 1.3;
       this.sound.playShieldBreak();
+      this.triggerHaptic('medium');
       this.emitHud();
     } else if (hitKind === 'BUMP') {
       this.staminaLife = 1;
-      this.lifeRegenTimer = GAME_CONSTANTS.LIFE_REGEN_SEC;
+      this.lifeRegenTimer = Math.max(
+        1.8,
+        GAME_CONSTANTS.LIFE_REGEN_SEC - (this.upgradeLevels.shield - 1) * 0.45,
+      );
       this.bumpInvulnTimer = 0.35;
       this.targetLane = this.previousLane;
       this.hitstopTimer = 0.03;
       this.shakeIntensity = 0.35;
       this.sound.playBump();
+      this.triggerHaptic('medium');
       this.updatePursuerAura();
       this.emitHud();
     } else if (hitKind === 'CRASH') {
+      this.triggerHaptic('heavy');
       this.triggerGameOver();
       return;
     }
@@ -909,6 +1046,7 @@ export class AnimeRushEngine {
       coinsCollected > 0 ||
       sakuraCollected > 0 ||
       fuelCollected > 0 ||
+      nearMisses > 0 ||
       pickedPowerup ||
       staminaChanged ||
       this.hudSyncAccumulator >= 0.05
@@ -1084,6 +1222,11 @@ export class AnimeRushEngine {
         this.heroPowerCharge >= spec.chargeCostSec && this.heroPowerActiveTimer <= 0,
       heroPowerActiveRemaining: Math.ceil(this.heroPowerActiveTimer),
       heroPassiveSummary: spec.passiveLabel,
+      nearMissCount: this.nearMissCount,
+      nearMissLabel: this.nearMissLabel,
+      biomeName: this.currentBiomeName,
+      canRevive: !this.revivedUsed,
+      revivedUsed: this.revivedUsed,
     });
   }
 

@@ -3,7 +3,11 @@ package com.example
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -423,6 +427,71 @@ class MainActivity : ComponentActivity() {
             }
           }
           .onFailure { emitError("claimAllInbox", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun purchaseUpgrade(upgradeId: String, cost: Long) {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .purchaseUpgrade(upgradeId, cost)
+          .onSuccess {
+            syncProfileToWeb(it)
+            refreshSocialBundle()
+            emitToWeb("toast", JSONObject().apply { put("message", "Amélioration renforcée !") })
+          }
+          .onFailure { emitError("purchaseUpgrade", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun spendGemsForRevive(cost: Long) {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .spendGemsForRevive(cost)
+          .onSuccess {
+            syncProfileToWeb(it)
+            emitToWeb("toast", JSONObject().apply { put("message", "Seconde chance activée !") })
+          }
+          .onFailure { emitError("spendGemsForRevive", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun triggerHaptic(kind: String) {
+      runOnUiThread {
+        try {
+          val durationMs =
+            when (kind) {
+              "heavy" -> 55L
+              "medium" -> 28L
+              else -> 14L
+            }
+          val amplitude =
+            when (kind) {
+              "heavy" -> 210
+              "medium" -> 140
+              else -> 80
+            }
+          val vibrator: Vibrator? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+              val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+              vm?.defaultVibrator
+            } else {
+              @Suppress("DEPRECATION")
+              getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+          if (vibrator?.hasVibrator() == true) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+              vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
+            } else {
+              @Suppress("DEPRECATION")
+              vibrator.vibrate(durationMs)
+            }
+          }
+        } catch (_: Exception) {
+          // Ignore devices without vibrator hardware or restricted haptic policy
+        }
       }
     }
 

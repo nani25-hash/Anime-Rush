@@ -139,4 +139,28 @@ class LocalGameRepositoryTest {
     val reEquipped = repository.equipCar("yellow_cab_gt").getOrThrow()
     assertEquals("yellow_cab_gt", reEquipped.equippedCarId)
   }
+
+  @Test
+  fun `purchases permanent power-up upgrades up to level 5 and spends gems for revive`() = runTest {
+    val initProfile = repository.ensurePlayerInitialized().getOrThrow()
+    assertEquals(1, initProfile.upgradeMagnetLevel)
+    assertEquals(1, initProfile.upgradeCarLevel)
+
+    // Earn enough coins for upgrade tests
+    repository.claimAllInbox().getOrThrow()
+    repository.recordRunResult(
+      score = 3000L,
+      distance = 400L,
+      coinsEarned = 1500L,
+      sakuraTokensEarned = 0L,
+      jumps = 10L,
+      slides = 5L,
+    ).getOrThrow()
+
+    val upgradedMagnet = repository.purchaseUpgrade("upgrade_magnet", 600L).getOrThrow()
+    assertEquals(2, upgradedMagnet.upgradeMagnetLevel)
+
+    val revived = repository.spendGemsForRevive(15L).getOrThrow()
+    assertEquals(25L, revived.gems)
+  }
 }
