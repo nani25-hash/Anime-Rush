@@ -4,16 +4,32 @@ import {
   COLLECTION_CARDS,
   EVENT_MILESTONES,
   MISSIONS_CATALOG,
+  SEASON_TIERS,
+  getCarById,
+  getCompanionById,
+  getHeroById,
 } from '../config/catalog';
-import { ActiveModal, ActiveRunBoosts, PlayerProfile, SocialBundle } from '../types/game';
 import {
-  AchievementIcon,
+  ActiveModal,
+  ActiveRunBoosts,
+  PlayerProfile,
+  SocialBundle,
+  getTodayUtcKey,
+} from '../types/game';
+import {
+  getAllCachedThumbnails,
+  hydrateThumbnailCache,
+  subscribeThumbnails,
+} from '../game/thumbnailStore';
+import {
+  BoltIcon,
+  CarIcon,
   ChestIcon,
   CollectionIcon,
-  InventoryIcon,
   MailIcon,
   MissionsIcon,
-  PlayIcon,
+  PassIcon,
+  PawIcon,
   SakuraIcon,
   TrophyIcon,
 } from './Icons';
@@ -22,9 +38,9 @@ interface LobbyOverlayProps {
   profile: PlayerProfile;
   social: SocialBundle;
   selectedBoosts: ActiveRunBoosts;
+  displayMultiplier: number;
   onStartRun: () => void;
   onClaimFreeChest: () => void;
-  onShowToast: (msg: string) => void;
   onOpenModal: (modal: ActiveModal) => void;
 }
 
@@ -40,28 +56,48 @@ export const LobbyOverlay: React.FC<LobbyOverlayProps> = ({
   profile,
   social,
   selectedBoosts,
+  displayMultiplier,
   onStartRun,
   onClaimFreeChest,
-  onShowToast,
   onOpenModal,
 }) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [thumbs, setThumbs] = useState<Record<string, string>>(() => getAllCachedThumbnails());
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void hydrateThumbnailCache().then(() => {
+      if (active) setThumbs(getAllCachedThumbnails());
+    });
+    const unsub = subscribeThumbnails(() => {
+      if (active) setThumbs(getAllCachedThumbnails());
+    });
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, []);
+
+  const hero = getHeroById(profile.equippedHeroId);
+  const car = getCarById(profile.equippedCarId);
+  const shiba = getCompanionById(profile.equippedCompanionId);
+
+  const heroThumb = thumbs[`hero:${hero.id}`];
+  const carThumb = thumbs[`car:${car.id}`];
+  const shibaThumb = thumbs[`comp:${shiba.id}`];
+  const dailyLoginAvailable = profile.loginLastClaimKey !== getTodayUtcKey(nowMs);
+
   const chestRemainingMs = Math.max(0, profile.nextFreeChestAt - nowMs);
   const chestReady = chestRemainingMs === 0;
 
-  const multRemainingMs = Math.max(0, profile.multiplierExpiresAt - nowMs);
-  const multiplierActive = profile.activeMultiplier > 1 && multRemainingMs > 0;
-  const displayMultiplier = selectedBoosts.useMultiplier
-    ? 5
-    : multiplierActive
-      ? profile.activeMultiplier
-      : 1;
+  const maxTier = SEASON_TIERS.length;
+  const currentTier = Math.min(maxTier, Math.max(1, profile.seasonLevel));
+  const passPct = Math.min(100, Math.max(12, Math.round((currentTier / maxTier) * 100)));
 
   const unreadInboxCount = useMemo(
     () => social.inbox.filter((m) => !m.claimed || !m.read).length,
@@ -90,6 +126,7 @@ export const LobbyOverlay: React.FC<LobbyOverlayProps> = ({
       ).length,
     [profile],
   );
+  const totalMissionsBadge = claimableMissionsCount + claimableAchievementsCount;
 
   const armedBoostCount = useMemo(
     () =>
@@ -100,268 +137,271 @@ export const LobbyOverlay: React.FC<LobbyOverlayProps> = ({
     [selectedBoosts],
   );
 
-  const totalInventoryCount =
-    profile.inventoryMagnets +
-    profile.inventoryShields +
-    profile.inventoryMultipliers +
-    profile.inventoryHeadStarts;
-
   return (
     <div className="lobby-body">
-      {/* Anime Rush Title Banner */}
-      <div className="lobby-logo-row">
-        <div className="lobby-logo-wrap">
-          <svg viewBox="0 0 360 108" className="lobby-logo-svg" aria-label="Anime Rush">
-            <defs>
-              <linearGradient id="arTopGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#FFFFFF" />
-                <stop offset="55%" stopColor="#E0F2FE" />
-                <stop offset="100%" stopColor="#93C5FD" />
-              </linearGradient>
-              <linearGradient id="arBottomGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#FDE047" />
-                <stop offset="52%" stopColor="#FB7185" />
-                <stop offset="100%" stopColor="#EF4444" />
-              </linearGradient>
-            </defs>
-            <g transform="skewX(-10)">
-              <text
-                x="185"
-                y="45"
-                textAnchor="middle"
-                fontSize="44"
-                fontWeight="900"
-                fontStyle="italic"
-                letterSpacing="3"
-                fill="#0B1120"
-                stroke="#0B1120"
-                strokeWidth="8"
-                strokeLinejoin="round"
-              >
-                ANIME
-              </text>
-              <text
-                x="185"
-                y="45"
-                textAnchor="middle"
-                fontSize="44"
-                fontWeight="900"
-                fontStyle="italic"
-                letterSpacing="3"
-                fill="url(#arTopGrad)"
-              >
-                ANIME
-              </text>
-              <text
-                x="192"
-                y="87"
-                textAnchor="middle"
-                fontSize="50"
-                fontWeight="900"
-                fontStyle="italic"
-                letterSpacing="3"
-                fill="#0B1120"
-                stroke="#0B1120"
-                strokeWidth="9"
-                strokeLinejoin="round"
-              >
-                RUSH
-              </text>
-              <text
-                x="192"
-                y="87"
-                textAnchor="middle"
-                fontSize="50"
-                fontWeight="900"
-                fontStyle="italic"
-                letterSpacing="3"
-                fill="url(#arBottomGrad)"
-              >
-                RUSH
-              </text>
-            </g>
-            <text
-              x="180"
-              y="103"
-              textAnchor="middle"
-              fontSize="11"
-              fontWeight="800"
-              letterSpacing="3.5"
-              fill="#E2E8F0"
+      {/* Full-viewport tap-to-play surface sitting behind HUD cards */}
+      <button
+        type="button"
+        className="tap-play-backdrop interactive"
+        onClick={onStartRun}
+        aria-label="Touche pour jouer"
+        data-testid="tap-anywhere-play"
+      />
+
+      {/* Top Two-Column Shonen HUD Framing */}
+      <div className="lobby-stage-grid">
+        {/* LEFT COLUMN: Hunter ID Plate (Profile + Best Score + Top Run) + Compact Manga Tickets */}
+        <aside className="ar-lobby-left">
+          <button
+            type="button"
+            className="ar-hunter-card interactive"
+            onClick={() => onOpenModal('settings')}
+            aria-label="Profil et meilleur score"
+            data-testid="profile-chip"
+          >
+            <div
+              className="ar-hunter-emblem"
+              style={{
+                borderColor: hero.uiAccent,
+                background: `radial-gradient(circle at 35% 30%, ${hero.uiAccent}55, #090d1f 85%)`,
+              }}
             >
-              - ENDLESS RUNNER -
-            </text>
-          </svg>
-        </div>
-      </div>
-
-      {/* Middle 3-column Stage: Slim Left Rail | Unobstructed 3D Hero+Shiba Center | Compact Right Rail */}
-      <div className="lobby-middle-grid">
-        {/* Left Action Rail (Unique to Inventory, Collection & Missions - zero duplicates with Bottom Nav) */}
-        <aside className="lobby-rail-left interactive">
-          <button
-            type="button"
-            className={`side-tile ${armedBoostCount > 0 ? 'tile-armed' : ''}`}
-            onClick={() => onOpenModal('inventory')}
-            data-testid="rail-inventory"
-          >
-            {armedBoostCount > 0 ? (
-              <span className="tile-armed-badge tabular">{armedBoostCount} PRÊT</span>
-            ) : (
-              totalInventoryCount > 0 && (
-                <span className="tile-count-badge tabular">{totalInventoryCount}</span>
-              )
-            )}
-            <InventoryIcon size={23} />
-            <span>INVENTAIRE</span>
-          </button>
-
-          <button
-            type="button"
-            className="side-tile"
-            onClick={() => onOpenModal('collection')}
-            data-testid="rail-collection"
-          >
-            <span className="tile-count-badge tabular">
-              {profile.collectionIds.length}/{COLLECTION_CARDS.length}
-            </span>
-            <CollectionIcon size={23} />
-            <span>COLLECTION</span>
-          </button>
-
-          <button
-            type="button"
-            className="side-tile"
-            onClick={() => onOpenModal('missions')}
-            data-testid="rail-missions"
-          >
-            {claimableMissionsCount > 0 && (
-              <span className="notif-dot">{claimableMissionsCount}</span>
-            )}
-            <MissionsIcon size={23} />
-            <span>MISSIONS</span>
-          </button>
-        </aside>
-
-        {/* Unobstructed Interactive 3D Hero & Shiba Tap Zone */}
-        <button
-          type="button"
-          className="center-stage-trigger interactive"
-          onClick={onStartRun}
-          aria-label="Lancer la course depuis la scène 3D"
-          data-testid="center-stage-play"
-        />
-
-        {/* Right Rail (Sakura Event Banner + Compact 2x2 Social/Progress Grid) */}
-        <aside className="lobby-rail-right interactive">
-          <button
-            type="button"
-            className="banner-card event-banner"
-            onClick={() => onOpenModal('event')}
-            data-testid="banner-event"
-          >
-            {claimableEventCount > 0 && <span className="notif-dot">!</span>}
-            <span className="banner-kicker event-kicker">ÉVÉNEMENT</span>
-            <span className="banner-title">COURSE DES SAKURA</span>
-            <div className="event-token-pill">
-              <SakuraIcon size={13} />
-              <span className="tabular">{profile.eventSakuraTokens} jetons</span>
-            </div>
-          </button>
-
-          <div className="social-tiles-grid">
-            <button
-              type="button"
-              className="side-tile compact-tile"
-              onClick={() => onOpenModal('leaderboard')}
-              data-testid="rail-leaderboard"
-            >
-              <TrophyIcon size={20} />
-              <span>CLASSEMENT</span>
-            </button>
-
-            <button
-              type="button"
-              className="side-tile compact-tile"
-              onClick={() => onOpenModal('achievements')}
-              data-testid="rail-achievements"
-            >
-              {claimableAchievementsCount > 0 && (
-                <span className="notif-dot">{claimableAchievementsCount}</span>
+              {heroThumb ? (
+                <img src={heroThumb} alt={hero.name} className="ar-portrait-thumb" />
+              ) : (
+                <span className="ar-hunter-kanji">{hero.kanji}</span>
               )}
-              <AchievementIcon size={20} />
-              <span>SUCCÈS</span>
-            </button>
-
-            <button
-              type="button"
-              className="side-tile compact-tile wide-tile"
-              onClick={() => onOpenModal('inbox')}
-              data-testid="rail-inbox"
-            >
-              {unreadInboxCount > 0 && <span className="notif-dot">{unreadInboxCount}</span>}
-              <MailIcon size={20} />
-              <span>MESSAGES</span>
-            </button>
-          </div>
-        </aside>
-      </div>
-
-      {/* Single Clean Lower Action Row: Free Chest + Main JOUER CTA + Record/Multiplier */}
-      <section className="lobby-lower-dock interactive">
-        <div className="lobby-cta-row">
-          <button
-            type="button"
-            className={`free-chest-card ${chestReady ? 'ready' : ''}`}
-            onClick={() =>
-              chestReady
-                ? onClaimFreeChest()
-                : onShowToast(`Coffre gratuit prêt dans ${formatCountdown(chestRemainingMs)}`)
-            }
-            data-testid="free-chest-btn"
-          >
-            <span className="chest-label">COFFRE GRATUIT</span>
-            <ChestIcon size={26} />
-            <span className="chest-timer tabular">
-              {chestReady ? 'OUVRIR !' : formatCountdown(chestRemainingMs)}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className="lobby-jouer-cta"
-            onClick={onStartRun}
-            data-testid="play-button"
-          >
-            <PlayIcon size={24} />
-            <span>JOUER</span>
-            {armedBoostCount > 0 && (
-              <span className="jouer-boost-pill tabular">+{armedBoostCount}</span>
-            )}
-          </button>
-
-          <div className="lobby-stats-col">
-            <div className="record-card">
-              <span className="record-kicker">TON RECORD</span>
-              <span className="record-val tabular">
+              <span className="ar-hunter-lv tabular">Niv.{profile.level}</span>
+            </div>
+            <div className="ar-hunter-score" data-testid="record-card">
+              <span className="ar-score-kicker">RECORD · 記録</span>
+              <span className="ar-score-val tabular">
                 {profile.bestScore.toLocaleString('fr-FR')}
               </span>
             </div>
+          </button>
+
+          <button
+            type="button"
+            className="ar-toprun-pill interactive"
+            onClick={() => onOpenModal('leaderboard')}
+            aria-label="Classement Top Run"
+            data-testid="rail-leaderboard"
+          >
+            <TrophyIcon size={17} />
+            <span className="ar-toprun-kicker">CLASSEMENT</span>
+            <span className="ar-toprun-val tabular">
+              {profile.bestScore.toLocaleString('fr-FR')}
+            </span>
+          </button>
+
+          <div className="ar-ticket-stack interactive">
             <button
               type="button"
-              className={`multiplier-card ${displayMultiplier > 1 ? 'boosted' : ''}`}
-              onClick={() => onOpenModal('inventory')}
-              data-testid="multiplier-card"
+              className="ar-manga-ticket"
+              onClick={() => onOpenModal('inbox')}
+              aria-label="Messages et cadeaux"
+              data-testid="rail-inbox"
             >
-              <span className="mult-badge">x{displayMultiplier}</span>
-              <div className="mult-meta">
-                <span className="mult-label">MULTIPLICATEUR</span>
-                <span className="mult-sub tabular">
-                  {multiplierActive ? formatCountdown(multRemainingMs) : 'ACTIF'}
+              {unreadInboxCount > 0 && (
+                <span className="ar-diamond-badge tabular">{unreadInboxCount}</span>
+              )}
+              <MailIcon size={20} />
+              <div className="ar-ticket-text">
+                <span className="ar-ticket-title">ACTUS</span>
+                <span className="ar-ticket-sub">Courrier</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="ar-manga-ticket"
+              onClick={() => onOpenModal('collection')}
+              aria-label="Album Collection"
+              data-testid="rail-collection"
+            >
+              <span className="ar-chip-count tabular">
+                {profile.collectionIds.length}/{COLLECTION_CARDS.length}
+              </span>
+              <CollectionIcon size={20} />
+              <div className="ar-ticket-text">
+                <span className="ar-ticket-title">ALBUM</span>
+                <span className="ar-ticket-sub">Cartes 3D</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="ar-manga-ticket"
+              onClick={() => onOpenModal('daily_login')}
+              aria-label="Cadeau quotidien 7 jours"
+              data-testid="rail-daily-login"
+            >
+              {dailyLoginAvailable && <span className="ar-diamond-badge">!</span>}
+              <ChestIcon size={20} />
+              <div className="ar-ticket-text">
+                <span className="ar-ticket-title">CADEAU 7J</span>
+                <span className="ar-ticket-sub">
+                  {dailyLoginAvailable ? 'À réclamer !' : `Jour ${Math.max(1, profile.loginStreakDay)}/7`}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="ar-sakura-event-card"
+              onClick={() => onOpenModal('event')}
+              aria-label="Événement Course des Sakura"
+              data-testid="banner-event"
+            >
+              {claimableEventCount > 0 && (
+                <span className="ar-diamond-badge tabular">{claimableEventCount}</span>
+              )}
+              <div className="ar-sakura-head">
+                <SakuraIcon size={20} />
+                <span className="ar-sakura-tag">ÉVÉNEMENT</span>
+              </div>
+              <span className="ar-sakura-name">SAKURA RUSH</span>
+              <span className="ar-sakura-tokens tabular">
+                {profile.eventSakuraTokens} jetons 🌸
+              </span>
+            </button>
+          </div>
+        </aside>
+
+        {/* CENTER CORRIDOR (3D Hero + Shiba + Neo-Tokyo Night Yard unobstructed) */}
+        <div className="center-stage-spacer" />
+
+        {/* RIGHT COLUMN: Cyber-Crate Reward, Katana Season Meter, Compact Loadout Deck */}
+        <aside className="ar-lobby-right">
+          <button
+            type="button"
+            className={`ar-crate-btn interactive ${chestReady ? 'ready' : ''}`}
+            onClick={() => (chestReady ? onClaimFreeChest() : onOpenModal('pass'))}
+            aria-label={chestReady ? 'Ouvrir coffre gratuit' : 'Voir le coffre gratuit dans le Pass'}
+            data-testid="free-chest-btn"
+          >
+            <div className="ar-crate-copy">
+              <span className="ar-crate-kicker">COFFRE DOJO</span>
+              <span className="ar-crate-val tabular">
+                {chestReady ? 'GRATUIT' : formatCountdown(chestRemainingMs)}
+              </span>
+            </div>
+            <ChestIcon size={24} />
+          </button>
+
+          <button
+            type="button"
+            className="ar-pass-module interactive"
+            onClick={() => onOpenModal('pass')}
+            aria-label="Ouvrir le Pass Saison"
+            data-testid="banner-season"
+          >
+            <div className="ar-pass-head">
+              <span className="ar-pass-kicker">
+                <PassIcon size={15} />
+                <span>PASS S1</span>
+              </span>
+              <span className="ar-pass-tier tabular">
+                {currentTier}/{maxTier}
+              </span>
+            </div>
+            <div className="ar-pass-rail">
+              <div className="ar-pass-fill" style={{ width: `${passPct}%` }} />
+            </div>
+          </button>
+
+          <div className="ar-deck-slots interactive">
+            <button
+              type="button"
+              className="ar-deck-slot slot-car"
+              onClick={() => onOpenModal('cars')}
+              title={car.name}
+              aria-label={`Voiture : ${car.name}`}
+              data-testid="rail-cars"
+            >
+              {carThumb ? (
+                <img src={carThumb} alt={car.name} className="ar-slot-thumb" />
+              ) : (
+                <CarIcon size={21} />
+              )}
+              <div className="ar-slot-copy">
+                <span className="ar-slot-kicker">BOLIDE</span>
+                <span className="ar-slot-val">{car.name}</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="ar-deck-slot slot-shiba"
+              onClick={() => onOpenModal('companions')}
+              title={shiba.name}
+              aria-label={`Compagnon : ${shiba.name}`}
+              data-testid="rail-shiba"
+            >
+              {shibaThumb ? (
+                <img src={shibaThumb} alt={shiba.name} className="ar-slot-thumb" />
+              ) : (
+                <PawIcon size={20} />
+              )}
+              <div className="ar-slot-copy">
+                <span className="ar-slot-kicker">SHIBA</span>
+                <span className="ar-slot-val">{shiba.name}</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={`ar-deck-slot slot-boost ${displayMultiplier > 1 ? 'boosted' : ''}`}
+              onClick={() => onOpenModal('inventory')}
+              aria-label="Inventaire et Boosts"
+              data-testid="rail-boosts"
+            >
+              <BoltIcon size={20} />
+              <div className="ar-slot-copy">
+                <span className="ar-slot-kicker">BOOSTS</span>
+                <span className="ar-slot-val tabular">
+                  {armedBoostCount > 0 ? `${armedBoostCount} armé(s)` : `×${displayMultiplier}`}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="ar-deck-slot slot-missions"
+              onClick={() => onOpenModal('missions')}
+              aria-label="Missions et Succès"
+              data-testid="rail-missions"
+            >
+              {totalMissionsBadge > 0 && (
+                <span className="ar-diamond-badge tabular">{totalMissionsBadge}</span>
+              )}
+              <MissionsIcon size={20} />
+              <div className="ar-slot-copy">
+                <span className="ar-slot-kicker">DÉFIS</span>
+                <span className="ar-slot-val">
+                  {totalMissionsBadge > 0 ? `${totalMissionsBadge} prêt(s)` : 'Voir'}
                 </span>
               </div>
             </button>
           </div>
+        </aside>
+      </div>
+
+      {/* Neo-Tokyo Shonen Katana-Slash "Touche pour jouer" Prompt (No Button) */}
+      <section className="lobby-lower-dock">
+        <div className="ar-dash-prompt" data-testid="tap-to-play-text">
+          <div className="ar-dash-slash-wrap">
+            <span className="ar-dash-jp">出撃準備完了 · ANIME RUSH</span>
+            <span className="ar-dash-label">TOUCHE POUR JOUER</span>
+            <span className="ar-dash-energy-line" aria-hidden="true" />
+          </div>
+          {armedBoostCount > 0 && (
+            <span className="tap-boost-pill tabular">
+              +{armedBoostCount} BOOST{armedBoostCount > 1 ? 'S' : ''} ACTIF
+              {armedBoostCount > 1 ? 'S' : ''}
+            </span>
+          )}
         </div>
       </section>
     </div>

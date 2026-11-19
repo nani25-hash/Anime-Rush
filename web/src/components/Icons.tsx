@@ -291,3 +291,65 @@ export const VolumeIcon: React.FC<{ muted: boolean; size?: number }> = ({ muted,
     )}
   </svg>
 );
+
+export const PawIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="ar-paw-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#FEF08A" />
+        <stop offset="55%" stopColor="#F97316" />
+        <stop offset="100%" stopColor="#EA580C" />
+      </linearGradient>
+    </defs>
+    <ellipse cx="7" cy="8.5" rx="2.1" ry="2.7" fill="url(#ar-paw-grad)" />
+    <ellipse cx="12" cy="6.6" rx="2.1" ry="2.8" fill="url(#ar-paw-grad)" />
+    <ellipse cx="17" cy="8.5" rx="2.1" ry="2.7" fill="url(#ar-paw-grad)" />
+    <path
+      d="M7.2 14.5c0-2.1 2.2-3.7 4.8-3.7s4.8 1.6 4.8 3.7c0 2.3-1.8 4.2-4.8 4.2s-4.8-1.9-4.8-4.2Z"
+      fill="url(#ar-paw-grad)"
+      stroke="#FEF9C3"
+      strokeWidth="1.2"
+    />
+  </svg>
+);
+
+export const GearIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path
+      d="M19.4 13.5a7.7 7.7 0 0 0 .06-1.5 7.7 7.7 0 0 0-.06-1.5l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-2.6-1.5l-.38-2.65A.5.5 0 0 0 13 1h-4a.5.5 0 0 0-.49.42l-.38 2.65a7.3 7.3 0 0 0-2.6 1.5l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64L2.66 10.5a7.7 7.7 0 0 0-.06 1.5 7.7 7.7 0 0 0 .06 1.5L.55 15.15a.5.5 0 0 0-.12.64l2 3.46a.5.5 0 0 0 .61.22l2.49-1a7.3 7.3 0 0 0 2.6 1.5l.38 2.65A.5.5 0 0 0 9 23h4a.5.5 0 0 0 .49-.42l.38-2.65a7.3 7.3 0 0 0 2.6-1.5l2.49 1a.5.5 0 0 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64L19.4 13.5ZM11 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+      fill="#F8FAFC"
+      stroke="#0F172A"
+      strokeWidth="1.2"
+      transform="translate(1 0)"
+    />
+  </svg>
+);
+
+export const PlusIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round" aria-hidden="true">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+export const StarMultiplierIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="ar-starmult-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#FEF08A" />
+        <stop offset="55%" stopColor="#FACC15" />
+        <stop offset="100%" stopColor="#D97706" />
+      </linearGradient>
+    </defs>
+    <polygon
+      points="11,2.2 13.8,7.9 20,8.8 15.5,13.2 16.6,19.4 11,16.5 5.4,19.4 6.5,13.2 2,8.8 8.2,7.9"
+      fill="url(#ar-starmult-grad)"
+      stroke="#FEF9C3"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <rect x="13.5" y="12.5" width="9" height="9" rx="2.5" fill="#0EA5E9" stroke="#FFFFFF" strokeWidth="1.2" />
+    <path d="M16 15l4 4M20 15l-4 4" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  CAPSULE_DOJO_COSTS,
+  DAILY_LOGIN_REWARDS,
+} from '../config/catalog';
+import {
   ActiveRunBoosts,
   ChestReward,
+  GachaDrawResult,
   LeaderboardEntry,
+  LoginRewardResult,
   PlayerProfile,
   RunTelemetry,
   SocialBundle,
+  getTodayUtcKey,
 } from '../types/game';
 
 declare global {
@@ -31,6 +38,11 @@ declare global {
         consumedShield: boolean,
         consumedMultiplier: boolean,
         consumedHeadStart: boolean,
+        nearMisses: number,
+        shibaActivations: number,
+        carDistance: number,
+        trainJumps: number,
+        rushLettersMaskEarned: number,
       ) => void;
       purchaseShopItem?: (
         itemType: string,
@@ -43,6 +55,9 @@ declare global {
       claimSeasonTier?: (tier: number) => void;
       claimEventMilestone?: (milestoneId: string) => void;
       claimAchievement?: (achievementId: string) => void;
+      claimDailyLogin?: () => void;
+      claimRushWordBonus?: () => void;
+      drawDojoCapsule?: (currencyMode: string) => void;
       fetchLeaderboard?: () => void;
       searchPlayers?: (query: string) => void;
       sendFriendRequest?: (
@@ -113,14 +128,28 @@ const DEFAULT_FALLBACK_PROFILE: PlayerProfile = {
   dailyMissionCoinsClaimed: false,
   dailyMissionRuns: 0,
   dailyMissionRunsClaimed: false,
+  dailyNearMisses: 0,
+  dailyNearMissesClaimed: false,
+  dailyShibaUses: 0,
+  dailyShibaUsesClaimed: false,
   dailyMissionResetKey: '',
   weeklyMissionDistance: 0,
   weeklyMissionDistanceClaimed: false,
   weeklyMissionJumps: 0,
   weeklyMissionJumpsClaimed: false,
+  weeklyCarDistance: 0,
+  weeklyCarDistanceClaimed: false,
+  weeklyTrainJumps: 0,
+  weeklyTrainJumpsClaimed: false,
   weeklyMissionResetKey: '',
   totalJumps: 0,
   totalSlides: 0,
+  rushLettersMask: 0,
+  rushResetKey: '',
+  rushWordsCompleted: 0,
+  loginStreakDay: 0,
+  loginLastClaimKey: '',
+  gachaDraws: 0,
 };
 
 const EMPTY_SOCIAL: SocialBundle = {
@@ -148,6 +177,9 @@ export interface GameProfileActions {
   claimSeasonTier: (tier: number) => void;
   claimEventMilestone: (milestoneId: string) => void;
   claimAchievement: (achievementId: string) => void;
+  claimDailyLogin: () => void;
+  claimRushWordBonus: () => void;
+  drawDojoCapsule: (currencyMode: 'coins' | 'sakura') => void;
   fetchLeaderboard: () => void;
   searchPlayers: (query: string) => void;
   sendFriendRequest: (entry: LeaderboardEntry) => void;
@@ -166,6 +198,8 @@ export interface GameProfileActions {
   spendGemsForRevive: (cost: number) => void;
   signOut: () => void;
   clearChestReward: () => void;
+  clearLoginReward: () => void;
+  clearGachaResult: () => void;
   clearToast: () => void;
   showToast: (message: string) => void;
   toggleBoost: (key: keyof ActiveRunBoosts) => void;
@@ -177,6 +211,8 @@ export function useGameProfile(): {
   social: SocialBundle;
   searchResults: LeaderboardEntry[];
   chestReward: ChestReward | null;
+  loginReward: LoginRewardResult | null;
+  gachaResult: GachaDrawResult | null;
   toastMessage: string | null;
   selectedBoosts: ActiveRunBoosts;
   actions: GameProfileActions;
@@ -185,6 +221,8 @@ export function useGameProfile(): {
   const [social, setSocial] = useState<SocialBundle>(EMPTY_SOCIAL);
   const [searchResults, setSearchResults] = useState<LeaderboardEntry[]>([]);
   const [chestReward, setChestReward] = useState<ChestReward | null>(null);
+  const [loginReward, setLoginReward] = useState<LoginRewardResult | null>(null);
+  const [gachaResult, setGachaResult] = useState<GachaDrawResult | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedBoosts, setSelectedBoosts] = useState<ActiveRunBoosts>({
     useMagnet: false,
@@ -199,7 +237,7 @@ export function useGameProfile(): {
       const obj = payload as Record<string, unknown>;
       switch (eventType) {
         case 'profile':
-          setProfile(obj as unknown as PlayerProfile);
+          setProfile((prev) => ({ ...prev, ...(obj as unknown as Partial<PlayerProfile>) }));
           break;
         case 'socialBundle':
           setSocial({
@@ -224,6 +262,14 @@ export function useGameProfile(): {
           break;
         case 'chestReward':
           setChestReward(obj as unknown as ChestReward);
+          break;
+        case 'loginReward':
+          setLoginReward(obj as unknown as LoginRewardResult);
+          break;
+        case 'gachaResult':
+          setGachaResult(obj as unknown as GachaDrawResult);
+          break;
+        case 'rushWordReward':
           break;
         case 'purchaseSuccess':
           setToastMessage('Achat confirmé et sauvegardé !');
@@ -307,6 +353,11 @@ export function useGameProfile(): {
         t.consumedShield,
         t.consumedMultiplier,
         t.consumedHeadStart,
+        t.nearMisses,
+        t.shibaActivations,
+        t.carDistance,
+        t.trainJumps,
+        t.rushLettersMaskEarned,
       );
     } else {
       setProfile((p) => ({
@@ -318,8 +369,13 @@ export function useGameProfile(): {
         eventSakuraTokens: p.eventSakuraTokens + t.sakuraTokensEarned,
         dailyMissionCoins: p.dailyMissionCoins + t.coinsEarned,
         dailyMissionRuns: p.dailyMissionRuns + 1,
+        dailyNearMisses: p.dailyNearMisses + t.nearMisses,
+        dailyShibaUses: p.dailyShibaUses + t.shibaActivations,
         weeklyMissionDistance: p.weeklyMissionDistance + t.distance,
         weeklyMissionJumps: p.weeklyMissionJumps + t.jumps,
+        weeklyCarDistance: p.weeklyCarDistance + t.carDistance,
+        weeklyTrainJumps: p.weeklyTrainJumps + t.trainJumps,
+        rushLettersMask: p.rushLettersMask | (t.rushLettersMaskEarned & 0x0f),
       }));
     }
   }, []);
@@ -392,6 +448,99 @@ export function useGameProfile(): {
 
   const claimAchievement = useCallback((achievementId: string) => {
     window.AndroidBridge?.claimAchievement?.(achievementId);
+  }, []);
+
+  const claimDailyLogin = useCallback(() => {
+    if (window.AndroidBridge?.claimDailyLogin) {
+      window.AndroidBridge.claimDailyLogin();
+    } else {
+      const today = getTodayUtcKey();
+      setProfile((p) => {
+        if (p.loginLastClaimKey === today) {
+          setToastMessage('Récompense quotidienne déjà réclamée aujourd’hui.');
+          return p;
+        }
+        const nextDay = p.loginStreakDay <= 0 || p.loginStreakDay >= 7 ? 1 : p.loginStreakDay + 1;
+        const def = DAILY_LOGIN_REWARDS[nextDay - 1] ?? DAILY_LOGIN_REWARDS[0];
+        const previewReward: LoginRewardResult = {
+          day: nextDay,
+          title: def.title,
+          summary: def.summary,
+          coins: nextDay === 1 ? 400 : 0,
+          gems: nextDay === 2 ? 15 : 0,
+          magnets: nextDay === 3 ? 1 : 0,
+          shields: nextDay === 3 ? 1 : 0,
+          multipliers: nextDay === 5 ? 1 : 0,
+          headStarts: nextDay === 5 ? 1 : 0,
+          sakuraTokens: nextDay === 7 ? 15 : 0,
+        };
+        setLoginReward(previewReward);
+        return {
+          ...p,
+          coins: p.coins + previewReward.coins,
+          gems: p.gems + previewReward.gems,
+          loginStreakDay: nextDay,
+          loginLastClaimKey: today,
+        };
+      });
+    }
+  }, []);
+
+  const claimRushWordBonus = useCallback(() => {
+    if (window.AndroidBridge?.claimRushWordBonus) {
+      window.AndroidBridge.claimRushWordBonus();
+    } else {
+      setProfile((p) => {
+        if ((p.rushLettersMask & 0x0f) !== 0x0f) return p;
+        setToastMessage('Mot R-U-S-H complété ! +400 pièces & +25 gemmes !');
+        return {
+          ...p,
+          coins: p.coins + 400,
+          gems: p.gems + 25,
+          seasonXp: p.seasonXp + 100,
+          rushLettersMask: 0,
+          rushWordsCompleted: p.rushWordsCompleted + 1,
+        };
+      });
+    }
+  }, []);
+
+  const drawDojoCapsule = useCallback((currencyMode: 'coins' | 'sakura') => {
+    if (window.AndroidBridge?.drawDojoCapsule) {
+      window.AndroidBridge.drawDojoCapsule(currencyMode);
+    } else {
+      setProfile((p) => {
+        if (currencyMode === 'coins' && p.coins < CAPSULE_DOJO_COSTS.coins) {
+          setToastMessage(`Il faut ${CAPSULE_DOJO_COSTS.coins} pièces.`);
+          return p;
+        }
+        if (currencyMode === 'sakura' && p.eventSakuraTokens < CAPSULE_DOJO_COSTS.sakura) {
+          setToastMessage(`Il faut ${CAPSULE_DOJO_COSTS.sakura} jetons Sakura.`);
+          return p;
+        }
+        const coinsSpent = currencyMode === 'coins' ? CAPSULE_DOJO_COSTS.coins : 0;
+        const sakuraSpent = currencyMode === 'sakura' ? CAPSULE_DOJO_COSTS.sakura : 0;
+        const previewOutcome: GachaDrawResult = {
+          rewardId: 'gems_crate',
+          title: 'Cristaux Néon',
+          rarity: 'Épique',
+          description: '+18 Gemmes étincelantes pour le Showroom !',
+          coinsAdded: 0,
+          gemsAdded: 18,
+          sakuraAdded: 0,
+          unlockedType: '',
+          unlockedId: '',
+        };
+        setGachaResult(previewOutcome);
+        return {
+          ...p,
+          coins: p.coins - coinsSpent + previewOutcome.coinsAdded,
+          gems: p.gems + previewOutcome.gemsAdded,
+          eventSakuraTokens: p.eventSakuraTokens - sakuraSpent,
+          gachaDraws: p.gachaDraws + 1,
+        };
+      });
+    }
   }, []);
 
   const fetchLeaderboard = useCallback(() => {
@@ -476,6 +625,8 @@ export function useGameProfile(): {
   }, []);
 
   const clearChestReward = useCallback(() => setChestReward(null), []);
+  const clearLoginReward = useCallback(() => setLoginReward(null), []);
+  const clearGachaResult = useCallback(() => setGachaResult(null), []);
   const clearToast = useCallback(() => setToastMessage(null), []);
   const showToast = useCallback((message: string) => setToastMessage(message), []);
 
@@ -513,6 +664,8 @@ export function useGameProfile(): {
     social,
     searchResults,
     chestReward,
+    loginReward,
+    gachaResult,
     toastMessage,
     selectedBoosts,
     actions: {
@@ -528,6 +681,9 @@ export function useGameProfile(): {
       claimSeasonTier,
       claimEventMilestone,
       claimAchievement,
+      claimDailyLogin,
+      claimRushWordBonus,
+      drawDojoCapsule,
       fetchLeaderboard,
       searchPlayers,
       sendFriendRequest,
@@ -541,6 +697,8 @@ export function useGameProfile(): {
       spendGemsForRevive,
       signOut,
       clearChestReward,
+      clearLoginReward,
+      clearGachaResult,
       clearToast,
       showToast,
       toggleBoost,

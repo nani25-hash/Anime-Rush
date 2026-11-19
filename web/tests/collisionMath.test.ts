@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  RUSH_LETTER_BITS,
+  SPAWN_THRESHOLDS,
   boxesOverlap,
   checkWallGateCollision,
+  computeNearMissCombo,
+  getMissingRushLetters,
   getRunnerAabb,
   getTrainSupportY,
   isNearMissDodge,
   isSideGrazeCollision,
+  shouldSpawnCollectibleAtDistance,
 } from '../src/game/collisionMath.ts';
 
 test('standing runner collides with LOW_BARRIER, HIGH_BEAM, and FULL_PILLAR on same lane', () => {
@@ -111,4 +116,75 @@ test('isNearMissDodge detects adjacent-lane train shave and tight barrier vault'
   assert.equal(isNearMissDodge(0, 1.4, -20, 0, -20, 0.78, 1.04, 0.22, 2.35), true);
   // Too far away in Z -> false
   assert.equal(isNearMissDodge(2.35, 0, -10, 0, -30, 0.78, 2.8, 2.1, 2.35), false);
+});
+
+test('SPAWN_THRESHOLDS order ensures progressive introduction of trains and wall gates', () => {
+  assert.equal(SPAWN_THRESHOLDS.OBSTACLE_START_Z, 45);
+  assert.equal(SPAWN_THRESHOLDS.TRAIN_MIN_DIST, 95);
+  assert.ok(SPAWN_THRESHOLDS.WALL_GATE_MIN_DIST > SPAWN_THRESHOLDS.TRAIN_MIN_DIST);
+  assert.ok(SPAWN_THRESHOLDS.DOUBLE_TRAIN_MIN_DIST > SPAWN_THRESHOLDS.WALL_GATE_MIN_DIST);
+});
+
+test('shouldSpawnCollectibleAtDistance enforces distance thresholds, cooldowns, and contextual state', () => {
+  const baseCtx = {
+    fuelPct: 40,
+    carActive: false,
+    hasShield: false,
+    magnetActive: false,
+  };
+
+  // Before OBSTACLE_START_Z everything is blocked
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 30, 0, baseCtx), false);
+
+  // Fuel spawns after FUEL_MIN_DIST when tank < 100% and car is inactive
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 59, 0, baseCtx), false);
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 65, 0, baseCtx), true);
+
+  // Fuel suppressed when tank is full, car is active, or within cooldown
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 80, 0, { ...baseCtx, fuelPct: 100 }), false);
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 80, 0, { ...baseCtx, carActive: true }), false);
+  assert.equal(shouldSpawnCollectibleAtDistance('FUEL', 80, 65, baseCtx), false);
+
+  // Shield & Magnet suppressed when already active
+  assert.equal(shouldSpawnCollectibleAtDistance('SHIELD', 230, 0, baseCtx), true);
+  assert.equal(
+    shouldSpawnCollectibleAtDistance('SHIELD', 230, 0, { ...baseCtx, hasShield: true }),
+    false,
+  );
+  assert.equal(shouldSpawnCollectibleAtDistance('MAGNET', 170, 0, baseCtx), true);
+  assert.equal(
+    shouldSpawnCollectibleAtDistance('MAGNET', 170, 0, { ...baseCtx, magnetActive: true }),
+    false,
+  );
+
+  // Sakura spawns cleanly after 110m outside cooldown
+  assert.equal(shouldSpawnCollectibleAtDistance('SAKURA', 105, 0, baseCtx), false);
+  assert.equal(shouldSpawnCollectibleAtDistance('SAKURA', 115, 0, baseCtx), true);
+  assert.equal(shouldSpawnCollectibleAtDistance('SAKURA', 130, 115, baseCtx), false);
+});
+
+test('getMissingRushLetters tracks R-U-S-H bitmask progress accurately', () => {
+  assert.deepEqual(getMissingRushLetters(0), ['R', 'U', 'S', 'H']);
+  const maskRU = RUSH_LETTER_BITS.R | RUSH_LETTER_BITS.U;
+  assert.deepEqual(getMissingRushLetters(maskRU), ['S', 'H']);
+  assert.deepEqual(getMissingRushLetters(0x0f), []);
+});
+
+test('computeNearMissCombo chains streaks up to x8 and resets when expired', () => {
+  const first = computeNearMissCombo(0, 0, 1);
+  assert.equal(first.nextCombo, 1);
+  assert.equal(first.addedBonusScore, 150);
+  assert.equal(first.nextTimerSec, 3.8);
+
+  const chained = computeNearMissCombo(first.nextCombo, 2.0, 1);
+  assert.equal(chained.nextCombo, 2);
+  assert.equal(chained.addedBonusScore, 300);
+  assert.ok(chained.extraChargeRatio > first.extraChargeRatio);
+
+  const reset = computeNearMissCombo(4, 0, 1);
+  assert.equal(reset.nextCombo, 1);
+  assert.equal(reset.addedBonusScore, 150);
+
+  const capped = computeNearMissCombo(7, 1.5, 3);
+  assert.equal(capped.nextCombo, 8);
 });

@@ -1,12 +1,19 @@
 import * as THREE from 'three';
 import { GAME_CONSTANTS, LaneIndex, ObstacleKind } from '../types/game';
 import {
+  RUSH_LETTERS,
+  RUSH_LETTER_BITS,
+  RushLetter,
+  SPAWN_THRESHOLDS,
+  SpawnContext,
   boxesOverlap,
   checkWallGateCollision,
+  getMissingRushLetters,
   getRunnerAabb,
   getTrainSupportY,
   isNearMissDodge,
   isSideGrazeCollision,
+  shouldSpawnCollectibleAtDistance,
 } from './collisionMath';
 import {
   createBrickWallTexture,
@@ -81,6 +88,17 @@ export interface PooledPowerup {
   phase: number;
 }
 
+export interface PooledRushLetter {
+  letter: RushLetter;
+  bit: number;
+  mesh: THREE.Group;
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  phase: number;
+}
+
 interface Particle {
   active: boolean;
   x: number;
@@ -100,6 +118,10 @@ export class ObstacleAndCoinPools {
   private readonly sakuraTokens: PooledSakuraToken[] = [];
   private readonly fuelCans: PooledFuelCan[] = [];
   private readonly powerups: PooledPowerup[] = [];
+  private readonly rushLetters: PooledRushLetter[] = [];
+  private readonly recordGateGroup: THREE.Group;
+  private recordGateTargetMeters: number | null = null;
+  private recordGateCrossed = false;
   private readonly particles: Particle[] = [];
   private readonly particleMesh: THREE.InstancedMesh;
 
@@ -109,8 +131,15 @@ export class ObstacleAndCoinPools {
   private readonly dummyScale = new THREE.Vector3();
 
   private readonly sharedDisposables: Array<{ dispose: () => void }> = [];
-  private nextSpawnZ = -38;
+  private nextSpawnZ = -SPAWN_THRESHOLDS.OBSTACLE_START_Z;
   private waveCounter = 0;
+  private lastTrainAbsZ = -999;
+  private lastWallAbsZ = -999;
+  private lastFuelAbsZ = -999;
+  private lastSakuraAbsZ = -999;
+  private lastMagnetAbsZ = -999;
+  private lastShieldAbsZ = -999;
+  private lastRushLetterAbsZ = -999;
 
   constructor(
     scene: THREE.Scene,
@@ -490,6 +519,46 @@ export class ObstacleAndCoinPools {
         phase: i * 0.9,
       });
     }
+
+    // Pre-allocate 4 glowing R-U-S-H Letter Collectibles
+    const rushCubeGeo = new THREE.BoxGeometry(0.58, 0.58, 0.58);
+    const rushHaloGeo = new THREE.TorusGeometry(0.54, 0.055, 8, 18);
+    this.sharedDisposables.push(rushCubeGeo, rushHaloGeo);
+
+    RUSH_LETTERS.forEach((letter, idx) => {
+      const tex = this.createRushLetterTexture(letter);
+      const letterMat = new THREE.MeshStandardMaterial({
+        map: tex,
+        emissive: 0x9a3412,
+        emissiveIntensity: 0.45,
+        roughness: 0.22,
+        metalness: 0.4,
+      });
+      applyWorldCurveShader(letterMat, curveUniforms);
+      this.sharedDisposables.push(tex, letterMat);
+
+      const group = new THREE.Group();
+      const core = new THREE.Mesh(rushCubeGeo, letterMat);
+      const halo = new THREE.Mesh(rushHaloGeo, warningYellowMat);
+      halo.rotation.x = Math.PI / 3;
+      group.add(core, halo);
+      group.visible = false;
+      scene.add(group);
+
+      this.rushLetters.push({
+        letter,
+        bit: RUSH_LETTER_BITS[letter],
+        mesh: group,
+        active: false,
+        x: 0,
+        y: 1.24,
+        z: 0,
+        phase: idx * 0.85,
+      });
+    });
+
+    // Physical glowing "TON RECORD" arch placed on the rails when player has a best score
+    this.recordGateGroup = this.createRecordGate(scene, curveUniforms, goldTrimMat, cyanSignalMat);
 
     // Pre-allocate 72 pooled particle instances
     const pGeo = new THREE.OctahedronGeometry(0.12, 0);
@@ -905,6 +974,13 @@ export class ObstacleAndCoinPools {
       pu.active = false;
       pu.mesh.visible = false;
     }
+    for (const rl of this.rushLetters) {
+      rl.active = false;
+      rl.mesh.visible = false;
+    }
+    this.recordGateTargetMeters = null;
+    this.recordGateCrossed = false;
+    this.recordGateGroup.visible = false;
     for (let i = 0; i < this.particles.length; i++) {
       this.particles[i].active = false;
       this.dummyPos.set(0, -50, 0);
@@ -913,8 +989,28 @@ export class ObstacleAndCoinPools {
       this.particleMesh.setMatrixAt(i, this.dummyMatrix);
     }
     this.particleMesh.instanceMatrix.needsUpdate = true;
-    this.nextSpawnZ = -36;
+    this.nextSpawnZ = -SPAWN_THRESHOLDS.OBSTACLE_START_Z;
     this.waveCounter = 0;
+    this.lastTrainAbsZ = -999;
+    this.lastWallAbsZ = -999;
+    this.lastFuelAbsZ = -999;
+    this.lastSakuraAbsZ = -999;
+    this.lastMagnetAbsZ = -999;
+    this.lastShieldAbsZ = -999;
+    this.lastRushLetterAbsZ = -999;
+  }
+
+  public setRecordTargetMeters(meters: number | null): void {
+    if (meters !== null && meters >= 35) {
+      this.recordGateTargetMeters = meters;
+      this.recordGateCrossed = false;
+      this.recordGateGroup.position.set(0, 0, -meters);
+      this.recordGateGroup.visible = true;
+    } else {
+      this.recordGateTargetMeters = null;
+      this.recordGateCrossed = false;
+      this.recordGateGroup.visible = false;
+    }
   }
 
   public emitBurstPublic(x: number, y: number, z: number, count: number, hexColor: number): void {
@@ -955,9 +1051,30 @@ export class ObstacleAndCoinPools {
     runnerX = 0,
     runnerY = 0,
     magnetActive = false,
-  ): { passedMovingTrain: boolean } {
+    spawnCtx: SpawnContext = {
+      fuelPct: 0,
+      carActive: false,
+      hasShield: false,
+      magnetActive,
+    },
+    currentRushMask = 0,
+  ): { passedMovingTrain: boolean; crossedRecordGate: boolean } {
     const cullZ = runnerZ + 12;
     let passedMovingTrain = false;
+    let crossedRecordGate = false;
+
+    if (this.recordGateTargetMeters !== null) {
+      const gateZ = -this.recordGateTargetMeters;
+      if (!this.recordGateCrossed && runnerZ <= gateZ + 0.35) {
+        this.recordGateCrossed = true;
+        crossedRecordGate = true;
+        this.emitBurst(runnerX, 2.2, gateZ, 30, 0xfacc15);
+        this.emitBurst(runnerX, 2.6, gateZ, 22, 0x38bdf8);
+      }
+      if (gateZ > cullZ) {
+        this.recordGateGroup.visible = false;
+      }
+    }
 
     for (const obs of this.obstacles) {
       if (!obs.active) continue;
@@ -1064,9 +1181,21 @@ export class ObstacleAndCoinPools {
       }
     }
 
+    for (const rl of this.rushLetters) {
+      if (!rl.active) continue;
+      if (rl.z > cullZ) {
+        rl.active = false;
+        rl.mesh.visible = false;
+      } else {
+        rl.phase += dt * 3.5;
+        rl.mesh.rotation.y = rl.phase;
+        rl.mesh.position.y = rl.y + Math.sin(rl.phase * 1.5) * 0.16;
+      }
+    }
+
     const spawnHorizonZ = runnerZ - 115;
     while (this.nextSpawnZ > spawnHorizonZ) {
-      this.spawnNextWave(worldSpeed);
+      this.spawnNextWave(worldSpeed, spawnCtx, currentRushMask);
     }
 
     let dirty = false;
@@ -1095,11 +1224,12 @@ export class ObstacleAndCoinPools {
       this.particleMesh.instanceMatrix.needsUpdate = true;
     }
 
-    return { passedMovingTrain };
+    return { passedMovingTrain, crossedRecordGate };
   }
 
-  private spawnNextWave(worldSpeed: number): void {
+  private spawnNextWave(worldSpeed: number, spawnCtx: SpawnContext, currentRushMask: number): void {
     const z = this.nextSpawnZ;
+    const absZ = Math.abs(z);
     this.waveCounter++;
     const difficulty = THREE.MathUtils.clamp((worldSpeed - 14.5) / 16.0, 0, 1);
 
@@ -1115,10 +1245,24 @@ export class ObstacleAndCoinPools {
     const laneB = lanes[1];
     const laneC = lanes[2];
 
-    const roll = Math.random();
+    const canSpawnWall =
+      absZ >= SPAWN_THRESHOLDS.WALL_GATE_MIN_DIST &&
+      absZ - this.lastWallAbsZ >= SPAWN_THRESHOLDS.WALL_GATE_COOLDOWN_DIST &&
+      absZ - this.lastTrainAbsZ >= 18;
+    const canSpawnTrain =
+      absZ >= SPAWN_THRESHOLDS.TRAIN_MIN_DIST &&
+      absZ - this.lastTrainAbsZ >= SPAWN_THRESHOLDS.TRAIN_COOLDOWN_DIST &&
+      absZ - this.lastWallAbsZ >= 20;
+    const canSpawnRampTrain =
+      canSpawnTrain && absZ >= SPAWN_THRESHOLDS.RAMP_TRAIN_MIN_DIST;
+    const canSpawnDoubleTrain =
+      canSpawnTrain && absZ >= SPAWN_THRESHOLDS.DOUBLE_TRAIN_MIN_DIST;
 
-    if (this.waveCounter >= 4 && this.waveCounter % 5 === 0) {
-      // Full-Width 3-Lane Brick Wall with Ornate 1-Lane or 2-Lane Portal Archway!
+    const roll = Math.random();
+    let spawnedWallThisWave = false;
+
+    if (canSpawnWall && this.waveCounter % 5 === 0) {
+      // Full-Width 3-Lane Brick Wall with Ornate 1-Lane or 2-Lane Portal Archway
       const isTwoLane = Math.random() < 0.45;
       if (isTwoLane) {
         const pair: [LaneIndex, LaneIndex] = Math.random() < 0.5 ? [-1, 0] : [0, 1];
@@ -1129,31 +1273,49 @@ export class ObstacleAndCoinPools {
         this.activateWallGate('WALL_GATE_1', z, [openLane]);
         this.spawnCoinLine(openLane, z + 5.0, 5, 2.2, 1.0);
       }
-    } else if (this.waveCounter <= 2 || roll < 0.24) {
+      this.lastWallAbsZ = absZ;
+      spawnedWallThisWave = true;
+    } else if (!canSpawnTrain || this.waveCounter <= 2 || roll < 0.28) {
+      // Early track & calm waves: clean barriers/beams before trains unlock at 95m
       const kind: ObstacleKind =
-        roll < 0.09 ? 'LOW_BARRIER' : roll < 0.16 ? 'HIGH_BEAM' : 'MOVING_CART';
+        canSpawnTrain && roll >= 0.19
+          ? 'MOVING_CART'
+          : roll < 0.14
+            ? 'LOW_BARRIER'
+            : 'HIGH_BEAM';
       this.activateObstacle(kind, laneB, kind === 'MOVING_CART' ? z - 5 : z);
+      if (kind === 'MOVING_CART') {
+        this.lastTrainAbsZ = absZ;
+      } else if (difficulty > 0.25 && Math.random() < 0.45) {
+        this.activateObstacle(kind === 'LOW_BARRIER' ? 'HIGH_BEAM' : 'LOW_BARRIER', laneC, z);
+      }
       this.spawnCoinLine(openLane, z + 4, 5, 2.2, 1.0);
-    } else if (roll < 0.48) {
+    } else if (canSpawnRampTrain && roll < 0.52) {
       const rampTrain = this.activateObstacle('MOVING_CART', laneB, z - 5.5, true);
+      if (rampTrain) {
+        this.lastTrainAbsZ = absZ;
+      }
       if (rampTrain?.hasRamp) {
-        this.spawnCoinLine(laneB, z + 1.5, 4, 2.2, 3.65);
+        this.spawnRampToRoofCoinArc(laneB, rampTrain.z, rampTrain.halfDepth);
       }
       if (difficulty > 0.15 || Math.random() < 0.68) {
-        const secondKind: ObstacleKind = Math.random() < 0.5 ? 'MOVING_CART' : 'LOW_BARRIER';
-        this.activateObstacle(secondKind, laneC, secondKind === 'MOVING_CART' ? z - 7.5 : z);
+        const secondKind: ObstacleKind =
+          canSpawnDoubleTrain && Math.random() < 0.42 ? 'MOVING_CART' : 'LOW_BARRIER';
+        this.activateObstacle(secondKind, laneC, secondKind === 'MOVING_CART' ? z - 8.0 : z);
       }
       this.spawnCoinLine(openLane, z + 2, 4, 2.2, 1.0);
-    } else if (roll < 0.68) {
+    } else if (roll < 0.72) {
       this.activateObstacle('LOW_BARRIER', openLane, z);
       this.activateObstacle('MOVING_CART', laneB, z - 5);
+      this.lastTrainAbsZ = absZ;
       if (difficulty > 0.28) {
         this.activateObstacle('HIGH_BEAM', laneC, z);
       }
       this.spawnCoinArc(openLane, z);
-    } else if (roll < 0.84) {
+    } else if (roll < 0.88 || !canSpawnDoubleTrain) {
       this.activateObstacle('HIGH_BEAM', openLane, z);
       this.activateObstacle('MOVING_CART', laneB, z - 5);
+      this.lastTrainAbsZ = absZ;
       if (difficulty > 0.22) {
         this.activateObstacle('LOW_BARRIER', laneC, z);
       }
@@ -1161,24 +1323,60 @@ export class ObstacleAndCoinPools {
     } else {
       const rampLeft = this.activateObstacle('MOVING_CART', laneB, z - 5, true);
       if (rampLeft?.hasRamp) {
-        this.spawnCoinLine(laneB, z + 1.8, 3, 2.2, 3.65);
+        this.spawnRampToRoofCoinArc(laneB, rampLeft.z, rampLeft.halfDepth);
       }
-      this.activateObstacle('MOVING_CART', laneC, z - 8.5);
+      this.activateObstacle('MOVING_CART', laneC, z - 9.0);
+      this.lastTrainAbsZ = absZ;
       this.spawnCoinLine(openLane, z + 3.5, 5, 2.2, 1.0);
     }
 
-    // Periodically spawn Fuel Jerrycan, Sakura Token, or Magnet/Shield orb on the safe lane
-    if (this.waveCounter >= 2 && this.waveCounter % 2 === 0) {
-      this.activateFuelCan(openLane * GAME_CONSTANTS.LANE_WIDTH, 1.08, z - 6.8);
-    } else if (this.waveCounter % 3 === 0) {
-      this.activateSakuraToken(openLane * GAME_CONSTANTS.LANE_WIDTH, 1.15, z - 6.5);
-    } else if (this.waveCounter % 7 === 0) {
-      const kind: PowerupKind = this.waveCounter % 14 === 0 ? 'SHIELD' : 'MAGNET';
-      this.activatePowerup(kind, openLane * GAME_CONSTANTS.LANE_WIDTH, 1.15, z - 6.5);
+    // Smart distance-gated & context-aware collectibles placed cleanly on safe lane
+    const itemZ = spawnedWallThisWave ? z - 7.5 : z - 6.8;
+    const itemAbsZ = Math.abs(itemZ);
+    const safeX = openLane * GAME_CONSTANTS.LANE_WIDTH;
+
+    let spawnedStandardCollectible = false;
+    if (shouldSpawnCollectibleAtDistance('FUEL', itemAbsZ, this.lastFuelAbsZ, spawnCtx)) {
+      this.activateFuelCan(safeX, 1.08, itemZ);
+      this.lastFuelAbsZ = itemAbsZ;
+      spawnedStandardCollectible = true;
+    } else if (
+      shouldSpawnCollectibleAtDistance('SHIELD', itemAbsZ, this.lastShieldAbsZ, spawnCtx)
+    ) {
+      this.activatePowerup('SHIELD', safeX, 1.15, itemZ);
+      this.lastShieldAbsZ = itemAbsZ;
+      spawnedStandardCollectible = true;
+    } else if (
+      shouldSpawnCollectibleAtDistance('MAGNET', itemAbsZ, this.lastMagnetAbsZ, spawnCtx)
+    ) {
+      this.activatePowerup('MAGNET', safeX, 1.15, itemZ);
+      this.lastMagnetAbsZ = itemAbsZ;
+      spawnedStandardCollectible = true;
+    } else if (
+      shouldSpawnCollectibleAtDistance('SAKURA', itemAbsZ, this.lastSakuraAbsZ, spawnCtx)
+    ) {
+      this.activateSakuraToken(safeX, 1.15, itemZ);
+      this.lastSakuraAbsZ = itemAbsZ;
+      spawnedStandardCollectible = true;
     }
 
-    const extraWallBuffer = this.waveCounter >= 4 && this.waveCounter % 5 === 0 ? 7.5 : 0;
-    const minGap = 18.0 + extraWallBuffer + worldSpeed * 0.45 - difficulty * 2.0;
+    // Daily R-U-S-H Word Hunt letter spawn (every ~38m starting after 72m)
+    const rushZ = spawnedStandardCollectible ? itemZ - 4.2 : itemZ;
+    const rushAbsZ = Math.abs(rushZ);
+    if (rushAbsZ >= 72 && rushAbsZ - this.lastRushLetterAbsZ >= 38) {
+      const missing = getMissingRushLetters(currentRushMask);
+      const candidate = missing.find((letter) => {
+        const slot = this.rushLetters.find((r) => r.letter === letter);
+        return slot && !slot.active;
+      });
+      if (candidate) {
+        this.activateRushLetter(candidate, safeX, 1.24, rushZ);
+        this.lastRushLetterAbsZ = rushAbsZ;
+      }
+    }
+
+    const extraWallBuffer = spawnedWallThisWave ? 8.5 : 0;
+    const minGap = 18.5 + extraWallBuffer + worldSpeed * 0.45 - difficulty * 1.8;
     const maxGap = minGap + 6.5;
     this.nextSpawnZ -= minGap + Math.random() * (maxGap - minGap);
   }
@@ -1261,6 +1459,19 @@ export class ObstacleAndCoinPools {
     }
   }
 
+  private spawnRampToRoofCoinArc(lane: LaneIndex, trainZ: number, halfDepth: number): void {
+    const x = lane * GAME_CONSTANTS.LANE_WIDTH;
+    const rampTopZ = trainZ + halfDepth;
+    // Ascending arc up the 3.0m incline ramp
+    this.activateCoin(x, 1.15, rampTopZ + 2.8);
+    this.activateCoin(x, 2.1, rampTopZ + 1.5);
+    this.activateCoin(x, 3.15, rampTopZ + 0.2);
+    // Rooftop coin line along the train top
+    this.activateCoin(x, 3.65, rampTopZ - 1.2);
+    this.activateCoin(x, 3.65, rampTopZ - 2.6);
+    this.activateCoin(x, 3.65, rampTopZ - 4.0);
+  }
+
   private activateCoin(x: number, y: number, z: number): void {
     const coin = this.coins.find((c) => !c.active);
     if (!coin) return;
@@ -1305,6 +1516,97 @@ export class ObstacleAndCoinPools {
     pu.mesh.visible = true;
   }
 
+  private activateRushLetter(letter: RushLetter, x: number, y: number, z: number): void {
+    const rl = this.rushLetters.find((r) => r.letter === letter && !r.active);
+    if (!rl) return;
+    rl.active = true;
+    rl.x = x;
+    rl.y = y;
+    rl.z = z;
+    rl.mesh.position.set(x, y, z);
+    rl.mesh.visible = true;
+  }
+
+  private createRushLetterTexture(letter: RushLetter): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const grad = ctx.createLinearGradient(0, 0, 128, 128);
+      grad.addColorStop(0, '#facc15');
+      grad.addColorStop(0.55, '#f97316');
+      grad.addColorStop(1, '#e11d48');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(8, 8, 112, 112);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 76px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(letter, 64, 68);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  private createRecordGate(
+    scene: THREE.Scene,
+    curveUniforms: WorldCurveUniforms,
+    goldTrimMat: THREE.Material,
+    cyanSignalMat: THREE.Material,
+  ): THREE.Group {
+    const group = new THREE.Group();
+    const pillarGeo = new THREE.BoxGeometry(0.42, 4.4, 0.42);
+    const bannerGeo = new THREE.BoxGeometry(8.6, 1.05, 0.34);
+
+    const bannerCanvas = document.createElement('canvas');
+    bannerCanvas.width = 512;
+    bannerCanvas.height = 96;
+    const ctx = bannerCanvas.getContext('2d');
+    if (ctx) {
+      const grad = ctx.createLinearGradient(0, 0, 512, 0);
+      grad.addColorStop(0, '#e11d48');
+      grad.addColorStop(0.5, '#f59e0b');
+      grad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 96);
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(4, 4, 504, 88);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 42px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★ TON RECORD · 記録 ★', 256, 50);
+    }
+    const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+    bannerTex.colorSpace = THREE.SRGBColorSpace;
+    const bannerMat = new THREE.MeshStandardMaterial({
+      map: bannerTex,
+      emissive: 0x78350f,
+      emissiveIntensity: 0.45,
+      roughness: 0.25,
+    });
+    applyWorldCurveShader(bannerMat, curveUniforms);
+    this.sharedDisposables.push(pillarGeo, bannerGeo, bannerTex, bannerMat);
+
+    const leftPillar = new THREE.Mesh(pillarGeo, cyanSignalMat);
+    leftPillar.position.set(-4.1, 2.2, 0);
+    const rightPillar = new THREE.Mesh(pillarGeo, goldTrimMat);
+    rightPillar.position.set(4.1, 2.2, 0);
+    const banner = new THREE.Mesh(bannerGeo, bannerMat);
+    banner.position.set(0, 4.25, 0);
+
+    group.add(leftPillar, rightPillar, banner);
+    group.visible = false;
+    scene.add(group);
+    return group;
+  }
+
   public getSupportFloorY(runnerX: number, runnerY: number, runnerZ: number): number {
     let supportY = 0;
     for (const obs of this.obstacles) {
@@ -1342,6 +1644,7 @@ export class ObstacleAndCoinPools {
     fuelCollected: number;
     pickedPowerup: PowerupKind | null;
     nearMisses: number;
+    rushMaskCollected: number;
   } {
     const runnerBox = getRunnerAabb(runnerX, runnerY, runnerZ, isSliding);
 
@@ -1486,7 +1789,30 @@ export class ObstacleAndCoinPools {
       }
     }
 
-    return { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup, nearMisses };
+    let rushMaskCollected = 0;
+    for (const rl of this.rushLetters) {
+      if (!rl.active) continue;
+      if (
+        Math.abs(rl.z - runnerZ) < 1.15 &&
+        Math.abs(rl.x - runnerX) < 1.15 &&
+        Math.abs(rl.y - runnerCenterY) < 1.25
+      ) {
+        rl.active = false;
+        rl.mesh.visible = false;
+        rushMaskCollected |= rl.bit;
+        this.emitBurst(rl.x, rl.y, rl.z, 16, 0xfacc15);
+      }
+    }
+
+    return {
+      hitKind,
+      coinsCollected,
+      sakuraCollected,
+      fuelCollected,
+      pickedPowerup,
+      nearMisses,
+      rushMaskCollected,
+    };
   }
 
   private emitBurst(x: number, y: number, z: number, count: number, hexColor: number): void {

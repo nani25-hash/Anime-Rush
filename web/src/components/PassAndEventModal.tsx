@@ -1,14 +1,24 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { EVENT_MILESTONES, SEASON_TIERS } from '../config/catalog';
 import { PlayerProfile } from '../types/game';
-import { CloseIcon, CoinIcon, GemIcon, PassIcon, SakuraIcon } from './Icons';
+import { ChestIcon, CloseIcon, CoinIcon, GemIcon, PassIcon, SakuraIcon } from './Icons';
 
 interface PassAndEventModalProps {
   mode: 'pass' | 'event';
   profile: PlayerProfile;
   onClaimSeasonTier: (tier: number) => void;
   onClaimEventMilestone: (milestoneId: string) => void;
+  onClaimFreeChest: () => void;
+  onShowToast: (msg: string) => void;
   onClose: () => void;
+}
+
+function formatCountdown(msRemaining: number): string {
+  const totalSec = Math.max(0, Math.floor(msRemaining / 1000));
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  return [hrs, mins, secs].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
 export const PassAndEventModal: React.FC<PassAndEventModalProps> = ({
@@ -16,21 +26,45 @@ export const PassAndEventModal: React.FC<PassAndEventModalProps> = ({
   profile,
   onClaimSeasonTier,
   onClaimEventMilestone,
+  onClaimFreeChest,
+  onShowToast,
   onClose,
 }) => {
+  const [tab, setTab] = useState<'pass' | 'event'>(mode);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    setTab(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const maxTier = SEASON_TIERS.length;
+  const currentTier = Math.min(maxTier, Math.max(1, profile.seasonLevel));
+  const isMaxTier = currentTier >= maxTier;
+  const displayXp = isMaxTier ? 100 : Math.min(100, Math.max(0, profile.seasonXp));
+
+  const chestRemainingMs = Math.max(0, profile.nextFreeChestAt - nowMs);
+  const chestReady = chestRemainingMs === 0;
+
   return (
     <div className="sheet-backdrop interactive" onClick={onClose}>
-      <div className="sheet-card" onClick={(e) => e.stopPropagation()} data-testid={`${mode}-modal`}>
+      <div className="sheet-card" onClick={(e) => e.stopPropagation()} data-testid={`${tab}-modal`}>
         <div className="sheet-header">
           <div>
             <h2 className="sheet-title">
-              {mode === 'pass'
+              {tab === 'pass'
                 ? 'SAISON 1 · ESPRITS DU JAPON'
                 : 'ÉVÉNEMENT · COURSE DES SAKURA'}
             </h2>
             <p className="sheet-sub">
-              {mode === 'pass'
-                ? `Niveau de Saison ${profile.seasonLevel} · ${profile.seasonXp}/100 XP vers le palier suivant`
+              {tab === 'pass'
+                ? isMaxTier
+                  ? `Palier Max ${currentTier} / ${maxTier} atteint · Coffre & Récompenses`
+                  : `Palier ${currentTier} / ${maxTier} · ${displayXp}/100 XP vers le palier suivant`
                 : `Collectez des jetons roses sur les rails (${profile.eventSakuraTokens} jetons)`}
             </p>
           </div>
@@ -39,28 +73,89 @@ export const PassAndEventModal: React.FC<PassAndEventModalProps> = ({
           </button>
         </div>
 
+        <div className="sheet-tabs" role="tablist" aria-label="Pass Saison et Événement">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'pass'}
+            className={`sheet-tab ${tab === 'pass' ? 'active' : ''}`}
+            onClick={() => setTab('pass')}
+            data-testid="pass-tab-season"
+          >
+            PASS &amp; COFFRE
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'event'}
+            className={`sheet-tab ${tab === 'event' ? 'active' : ''}`}
+            onClick={() => setTab('event')}
+            data-testid="pass-tab-event"
+          >
+            COURSE DES SAKURA
+          </button>
+        </div>
+
         <div className="sheet-scroll">
-          {mode === 'pass' ? (
+          {tab === 'pass' ? (
             <div className="cards-list">
+              {/* Free Chest moved into Pass as requested */}
+              <div
+                className={`shop-row-card pass-chest-card ${chestReady ? 'highlight-card' : ''}`}
+                data-testid="pass-free-chest-card"
+              >
+                <div className="shop-icon-box" style={{ background: '#1d4ed833' }}>
+                  <ChestIcon size={30} />
+                </div>
+                <div className="shop-info" style={{ flex: 1 }}>
+                  <div className="shop-name-row">
+                    <span className="shop-name">Coffre Gratuit du Dojo</span>
+                    <span className="tag-pill tabular">
+                      {chestReady ? 'PRÊT' : formatCountdown(chestRemainingMs)}
+                    </span>
+                  </div>
+                  <p className="shop-desc">
+                    Contient des pièces, +12 gemmes et +180 XP de compte toutes les 4h.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={chestReady ? 'action-btn-gold' : 'action-btn-muted'}
+                  onClick={() =>
+                    chestReady
+                      ? onClaimFreeChest()
+                      : onShowToast(`Coffre gratuit prêt dans ${formatCountdown(chestRemainingMs)}`)
+                  }
+                  data-testid="free-chest-btn"
+                >
+                  {chestReady ? 'OUVRIR !' : formatCountdown(chestRemainingMs)}
+                </button>
+              </div>
+
               <div className="season-summary-banner">
                 <div className="season-summary-left">
                   <PassIcon size={28} />
                   <div>
-                    <strong>Palier actuel : {profile.seasonLevel} / 10</strong>
-                    <p className="shop-desc">Courez et validez vos missions pour monter en palier.</p>
+                    <strong>
+                      Palier actuel : {currentTier} / {maxTier}
+                    </strong>
+                    <p className="shop-desc">
+                      {isMaxTier
+                        ? 'Félicitations ! Tous les paliers de la Saison 1 sont débloqués.'
+                        : 'Courez et validez vos missions pour monter en palier.'}
+                    </p>
                   </div>
                 </div>
                 <div className="progress-track" style={{ marginTop: 8 }}>
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${Math.min(100, profile.seasonXp)}%` }}
-                  />
-                  <span className="tabular">{profile.seasonXp} / 100 XP</span>
+                  <div className="progress-fill" style={{ width: `${displayXp}%` }} />
+                  <span className="tabular">
+                    {isMaxTier ? 'PALIER MAX (10 / 10)' : `${displayXp} / 100 XP`}
+                  </span>
                 </div>
               </div>
 
               {SEASON_TIERS.map((tierInfo) => {
-                const reached = profile.seasonLevel >= tierInfo.tier;
+                const reached = currentTier >= tierInfo.tier;
                 const claimed = profile.claimedSeasonTiers.includes(tierInfo.tier);
                 const claimable = reached && !claimed;
 

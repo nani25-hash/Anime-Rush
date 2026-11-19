@@ -2,6 +2,10 @@ export type GamePhase = 'TITLE' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 
 export type QualityLevel = 'low' | 'medium' | 'high';
 
+export type FpsLimit = 30 | 60;
+
+export type TutorialStep = 'SWIPE_LR' | 'JUMP' | 'SLIDE';
+
 export type LaneIndex = -1 | 0 | 1;
 
 export type ObstacleKind =
@@ -12,18 +16,21 @@ export type ObstacleKind =
   | 'WALL_GATE_1'
   | 'WALL_GATE_2';
 
-export type BottomTab = 'home' | 'heroes' | 'shop' | 'pass';
+export type BottomTab = 'home' | 'missions' | 'heroes' | 'shop' | 'pass';
 
 export type ActiveModal =
   | null
   | 'shop'
   | 'heroes'
+  | 'cars'
+  | 'companions'
   | 'inventory'
   | 'collection'
   | 'missions'
   | 'achievements'
   | 'pass'
   | 'event'
+  | 'daily_login'
   | 'leaderboard'
   | 'friends'
   | 'inbox'
@@ -47,6 +54,16 @@ export type HeroActiveEffect =
   | 'SAKURA_BURST'
   | 'SUPERNOVA';
 
+export type CompanionPassiveType = HeroPassiveType;
+
+export type CompanionActiveEffect =
+  | 'COIN_X2'
+  | 'MAGNET_AURA'
+  | 'SHIELD_BARK'
+  | 'FUEL_FETCH'
+  | 'SAKURA_HOWL'
+  | 'SHOCKWAVE_DASH';
+
 export interface ActiveRunBoosts {
   useMagnet: boolean;
   useShield: boolean;
@@ -65,6 +82,11 @@ export interface RunTelemetry {
   consumedShield: boolean;
   consumedMultiplier: boolean;
   consumedHeadStart: boolean;
+  nearMisses: number;
+  shibaActivations: number;
+  carDistance: number;
+  trainJumps: number;
+  rushLettersMaskEarned: number;
 }
 
 export interface HudSnapshot {
@@ -100,9 +122,23 @@ export interface HudSnapshot {
   heroPowerReady: boolean;
   heroPowerActiveRemaining: number;
   heroPassiveSummary: string;
-  // Near-miss, Biome & Revive
+  // Dynamic Shiba Companion Power System
+  shibaName: string;
+  shibaPowerName: string;
+  shibaPowerAccent: string;
+  shibaPowerChargePct: number;
+  shibaPowerReady: boolean;
+  shibaPowerActiveRemaining: number;
+  shibaCoinX2Active: boolean;
+  // Near-miss Combo, RUSH Word, Speed Lines, Tutorial & Record Gate
   nearMissCount: number;
+  nearMissCombo: number;
+  nearMissComboTimer: number;
   nearMissLabel: string | null;
+  rushLettersMask: number;
+  speedLinesIntensity: number;
+  tutorialStep: TutorialStep | null;
+  recordGateMeters: number | null;
   biomeName: string;
   canRevive: boolean;
   revivedUsed: boolean;
@@ -149,14 +185,28 @@ export interface PlayerProfile {
   dailyMissionCoinsClaimed: boolean;
   dailyMissionRuns: number;
   dailyMissionRunsClaimed: boolean;
+  dailyNearMisses: number;
+  dailyNearMissesClaimed: boolean;
+  dailyShibaUses: number;
+  dailyShibaUsesClaimed: boolean;
   dailyMissionResetKey: string;
   weeklyMissionDistance: number;
   weeklyMissionDistanceClaimed: boolean;
   weeklyMissionJumps: number;
   weeklyMissionJumpsClaimed: boolean;
+  weeklyCarDistance: number;
+  weeklyCarDistanceClaimed: boolean;
+  weeklyTrainJumps: number;
+  weeklyTrainJumpsClaimed: boolean;
   weeklyMissionResetKey: string;
   totalJumps: number;
   totalSlides: number;
+  rushLettersMask: number;
+  rushResetKey: string;
+  rushWordsCompleted: number;
+  loginStreakDay: number;
+  loginLastClaimKey: string;
+  gachaDraws: number;
 }
 
 export interface LeaderboardEntry {
@@ -213,6 +263,38 @@ export interface ChestReward {
   gems: number;
   xp: number;
   nextFreeChestAt: number;
+}
+
+export interface LoginRewardResult {
+  day: number;
+  title: string;
+  summary: string;
+  coins: number;
+  gems: number;
+  magnets: number;
+  shields: number;
+  multipliers: number;
+  headStarts: number;
+  sakuraTokens: number;
+}
+
+export interface RushWordResult {
+  coins: number;
+  gems: number;
+  seasonXp: number;
+  wordsCompleted: number;
+}
+
+export interface GachaDrawResult {
+  rewardId: string;
+  title: string;
+  rarity: string;
+  description: string;
+  coinsAdded: number;
+  gemsAdded: number;
+  sakuraAdded: number;
+  unlockedType: string;
+  unlockedId: string;
 }
 
 export interface QualityPreset {
@@ -288,7 +370,19 @@ const STORAGE_KEYS = {
   QUALITY: 'anime_rush_quality_v1',
   MUTED: 'anime_rush_muted_v1',
   HAPTICS: 'anime_rush_haptics_v1',
+  FPS_LIMIT: 'anime_rush_fps_limit_v1',
+  MUSIC_VOL: 'anime_rush_music_vol_v1',
+  SFX_VOL: 'anime_rush_sfx_vol_v1',
+  TUTORIAL_DONE: 'anime_rush_tutorial_done_v1',
 } as const;
+
+export function getTodayUtcKey(nowMs = Date.now()): string {
+  const d = new Date(nowMs);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export function loadBestScore(): number {
   try {
@@ -356,6 +450,76 @@ export function loadSavedHaptics(): boolean {
 export function saveHaptics(enabled: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEYS.HAPTICS, enabled ? '1' : '0');
+  } catch {
+    // Ignore
+  }
+}
+
+export function loadSavedFpsLimit(): FpsLimit {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.FPS_LIMIT) === '30' ? 30 : 60;
+  } catch {
+    return 60;
+  }
+}
+
+export function saveFpsLimit(fps: FpsLimit): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.FPS_LIMIT, String(fps));
+  } catch {
+    // Ignore
+  }
+}
+
+export function loadMusicVolume(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MUSIC_VOL);
+    if (raw === null) return 0.55;
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.55;
+  } catch {
+    return 0.55;
+  }
+}
+
+export function saveMusicVolume(vol: number): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.MUSIC_VOL, String(Math.max(0, Math.min(1, vol))));
+  } catch {
+    // Ignore
+  }
+}
+
+export function loadSfxVolume(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SFX_VOL);
+    if (raw === null) return 0.8;
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.8;
+  } catch {
+    return 0.8;
+  }
+}
+
+export function saveSfxVolume(vol: number): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.SFX_VOL, String(Math.max(0, Math.min(1, vol))));
+  } catch {
+    // Ignore
+  }
+}
+
+export function loadTutorialDone(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.TUTORIAL_DONE) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveTutorialDone(done: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.TUTORIAL_DONE, done ? '1' : '0');
   } catch {
     // Ignore
   }

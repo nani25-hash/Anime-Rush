@@ -52,14 +52,28 @@ data class PlayerProfile(
   val dailyMissionCoinsClaimed: Boolean = false,
   val dailyMissionRuns: Long = 0L,
   val dailyMissionRunsClaimed: Boolean = false,
+  val dailyNearMisses: Long = 0L,
+  val dailyNearMissesClaimed: Boolean = false,
+  val dailyShibaUses: Long = 0L,
+  val dailyShibaUsesClaimed: Boolean = false,
   val dailyMissionResetKey: String = "",
   val weeklyMissionDistance: Long = 0L,
   val weeklyMissionDistanceClaimed: Boolean = false,
   val weeklyMissionJumps: Long = 0L,
   val weeklyMissionJumpsClaimed: Boolean = false,
+  val weeklyCarDistance: Long = 0L,
+  val weeklyCarDistanceClaimed: Boolean = false,
+  val weeklyTrainJumps: Long = 0L,
+  val weeklyTrainJumpsClaimed: Boolean = false,
   val weeklyMissionResetKey: String = "",
   val totalJumps: Long = 0L,
   val totalSlides: Long = 0L,
+  val rushLettersMask: Int = 0,
+  val rushResetKey: String = "",
+  val rushWordsCompleted: Long = 0L,
+  val loginStreakDay: Int = 0,
+  val loginLastClaimKey: String = "",
+  val gachaDraws: Long = 0L,
   @ServerTimestamp val createdAt: Timestamp? = null,
   @ServerTimestamp val updatedAt: Timestamp? = null,
 ) {
@@ -107,14 +121,28 @@ data class PlayerProfile(
         "dailyMissionCoinsClaimed" to dailyMissionCoinsClaimed,
         "dailyMissionRuns" to dailyMissionRuns,
         "dailyMissionRunsClaimed" to dailyMissionRunsClaimed,
+        "dailyNearMisses" to dailyNearMisses,
+        "dailyNearMissesClaimed" to dailyNearMissesClaimed,
+        "dailyShibaUses" to dailyShibaUses,
+        "dailyShibaUsesClaimed" to dailyShibaUsesClaimed,
         "dailyMissionResetKey" to dailyMissionResetKey,
         "weeklyMissionDistance" to weeklyMissionDistance,
         "weeklyMissionDistanceClaimed" to weeklyMissionDistanceClaimed,
         "weeklyMissionJumps" to weeklyMissionJumps,
         "weeklyMissionJumpsClaimed" to weeklyMissionJumpsClaimed,
+        "weeklyCarDistance" to weeklyCarDistance,
+        "weeklyCarDistanceClaimed" to weeklyCarDistanceClaimed,
+        "weeklyTrainJumps" to weeklyTrainJumps,
+        "weeklyTrainJumpsClaimed" to weeklyTrainJumpsClaimed,
         "weeklyMissionResetKey" to weeklyMissionResetKey,
         "totalJumps" to totalJumps,
         "totalSlides" to totalSlides,
+        "rushLettersMask" to rushLettersMask,
+        "rushResetKey" to rushResetKey,
+        "rushWordsCompleted" to rushWordsCompleted,
+        "loginStreakDay" to loginStreakDay,
+        "loginLastClaimKey" to loginLastClaimKey,
+        "gachaDraws" to gachaDraws,
         "createdAt" to (createdAt ?: FieldValue.serverTimestamp()),
         "updatedAt" to FieldValue.serverTimestamp(),
       )
@@ -163,14 +191,28 @@ data class PlayerProfile(
       put("dailyMissionCoinsClaimed", dailyMissionCoinsClaimed)
       put("dailyMissionRuns", dailyMissionRuns)
       put("dailyMissionRunsClaimed", dailyMissionRunsClaimed)
+      put("dailyNearMisses", dailyNearMisses)
+      put("dailyNearMissesClaimed", dailyNearMissesClaimed)
+      put("dailyShibaUses", dailyShibaUses)
+      put("dailyShibaUsesClaimed", dailyShibaUsesClaimed)
       put("dailyMissionResetKey", dailyMissionResetKey)
       put("weeklyMissionDistance", weeklyMissionDistance)
       put("weeklyMissionDistanceClaimed", weeklyMissionDistanceClaimed)
       put("weeklyMissionJumps", weeklyMissionJumps)
       put("weeklyMissionJumpsClaimed", weeklyMissionJumpsClaimed)
+      put("weeklyCarDistance", weeklyCarDistance)
+      put("weeklyCarDistanceClaimed", weeklyCarDistanceClaimed)
+      put("weeklyTrainJumps", weeklyTrainJumps)
+      put("weeklyTrainJumpsClaimed", weeklyTrainJumpsClaimed)
       put("weeklyMissionResetKey", weeklyMissionResetKey)
       put("totalJumps", totalJumps)
       put("totalSlides", totalSlides)
+      put("rushLettersMask", rushLettersMask)
+      put("rushResetKey", rushResetKey)
+      put("rushWordsCompleted", rushWordsCompleted)
+      put("loginStreakDay", loginStreakDay)
+      put("loginLastClaimKey", loginLastClaimKey)
+      put("gachaDraws", gachaDraws)
     }
 }
 
@@ -293,3 +335,70 @@ data class ChestRewardResult(
   val xp: Long,
   val nextFreeChestAt: Long,
 )
+
+data class LoginRewardResult(
+  val day: Int,
+  val title: String,
+  val summary: String,
+  val coins: Long,
+  val gems: Long,
+  val magnets: Long,
+  val shields: Long,
+  val multipliers: Long,
+  val headStarts: Long,
+  val sakuraTokens: Long,
+) {
+  fun toJsonObject(): JSONObject =
+    JSONObject().apply {
+      put("day", day)
+      put("title", title)
+      put("summary", summary)
+      put("coins", coins)
+      put("gems", gems)
+      put("magnets", magnets)
+      put("shields", shields)
+      put("multipliers", multipliers)
+      put("headStarts", headStarts)
+      put("sakuraTokens", sakuraTokens)
+    }
+}
+
+data class RushWordResult(
+  val coins: Long,
+  val gems: Long,
+  val seasonXp: Long,
+  val wordsCompleted: Long,
+) {
+  fun toJsonObject(): JSONObject =
+    JSONObject().apply {
+      put("coins", coins)
+      put("gems", gems)
+      put("seasonXp", seasonXp)
+      put("wordsCompleted", wordsCompleted)
+    }
+}
+
+data class GachaDrawResult(
+  val rewardId: String,
+  val title: String,
+  val rarity: String,
+  val description: String,
+  val coinsAdded: Long,
+  val gemsAdded: Long,
+  val sakuraAdded: Long,
+  val unlockedType: String?,
+  val unlockedId: String?,
+) {
+  fun toJsonObject(): JSONObject =
+    JSONObject().apply {
+      put("rewardId", rewardId)
+      put("title", title)
+      put("rarity", rarity)
+      put("description", description)
+      put("coinsAdded", coinsAdded)
+      put("gemsAdded", gemsAdded)
+      put("sakuraAdded", sakuraAdded)
+      put("unlockedType", unlockedType ?: "")
+      put("unlockedId", unlockedId ?: "")
+    }
+}

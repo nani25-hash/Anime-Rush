@@ -19,16 +19,35 @@ const SFX_PATHS = {
 
 type SfxKey = keyof typeof SFX_PATHS;
 
+// Japanese Hirajoshi-inspired cyber-synthwave bass + lead motifs (Hz)
+const BGM_BASS_PATTERN = [110, 110, 146.83, 130.81, 164.81, 164.83, 196.0, 146.83];
+const BGM_ARP_PATTERN = [
+  440, 523.25, 659.25, 880, 659.25, 587.33, 523.25, 659.25,
+  440, 587.33, 783.99, 880, 1046.5, 880, 783.99, 659.25,
+];
+
 export class SoundEngine {
   private ctx: AudioContext | null = null;
+  private musicGain: GainNode | null = null;
+  private sfxGain: GainNode | null = null;
   private muted: boolean;
+  private musicVolume = 0.55;
+  private sfxVolume = 0.8;
   private coinCombo = 0;
   private lastCoinAt = 0;
   private readonly buffers = new Map<SfxKey, AudioBuffer>();
   private loadingStarted = false;
 
-  constructor(initialMuted: boolean) {
+  private bgmActive = false;
+  private bgmSpeedFactor = 1.0;
+  private bgmCarMode = false;
+  private bgmTimerId: number | null = null;
+  private bgmStep = 0;
+
+  constructor(initialMuted: boolean, initialMusicVol = 0.55, initialSfxVol = 0.8) {
     this.muted = initialMuted;
+    this.musicVolume = initialMusicVol;
+    this.sfxVolume = initialSfxVol;
   }
 
   public isMuted(): boolean {
@@ -37,6 +56,47 @@ export class SoundEngine {
 
   public setMuted(muted: boolean): void {
     this.muted = muted;
+    this.applyGainVolumes();
+    if (muted) {
+      this.stopBgmTimer();
+    } else if (this.bgmActive) {
+      this.ensureBgmTimer();
+    }
+  }
+
+  public setMusicVolume(vol: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, vol));
+    this.applyGainVolumes();
+  }
+
+  public setSfxVolume(vol: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, vol));
+    this.applyGainVolumes();
+  }
+
+  public setBgmState(active: boolean, speedFactor = 1.0, carMode = false): void {
+    this.bgmActive = active;
+    this.bgmSpeedFactor = Math.max(1.0, Math.min(2.4, speedFactor));
+    this.bgmCarMode = carMode;
+    if (!active || this.muted || this.musicVolume <= 0.01) {
+      this.stopBgmTimer();
+      return;
+    }
+    this.ensureBgmTimer();
+  }
+
+  private applyGainVolumes(): void {
+    const now = this.ctx?.currentTime ?? 0;
+    if (this.musicGain && this.ctx) {
+      this.musicGain.gain.setTargetAtTime(
+        this.muted ? 0 : this.musicVolume * 0.48,
+        now,
+        0.04,
+      );
+    }
+    if (this.sfxGain && this.ctx) {
+      this.sfxGain.gain.setTargetAtTime(this.muted ? 0 : this.sfxVolume, now, 0.03);
+    }
   }
 
   public unlock(): void {
@@ -48,6 +108,9 @@ export class SoundEngine {
     if (ctx && !this.loadingStarted) {
       this.loadingStarted = true;
       this.preloadAll(ctx);
+    }
+    if (this.bgmActive && this.musicVolume > 0.01) {
+      this.ensureBgmTimer();
     }
   }
 
@@ -75,6 +138,11 @@ export class SoundEngine {
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return null;
       this.ctx = new AudioCtx();
+      this.musicGain = this.ctx.createGain();
+      this.sfxGain = this.ctx.createGain();
+      this.musicGain.connect(this.ctx.destination);
+      this.sfxGain.connect(this.ctx.destination);
+      this.applyGainVolumes();
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
@@ -82,9 +150,80 @@ export class SoundEngine {
     return this.ctx;
   }
 
+  private ensureBgmTimer(): void {
+    if (this.bgmTimerId !== null || typeof window === 'undefined') return;
+    const scheduleNext = () => {
+      this.bgmTimerId = null;
+      if (!this.bgmActive || this.muted || this.musicVolume <= 0.01) return;
+      this.triggerBgmStep();
+      const baseMs = this.bgmCarMode ? 128 : 158;
+      const intervalMs = Math.max(96, Math.round(baseMs / (0.85 + this.bgmSpeedFactor * 0.2)));
+      this.bgmTimerId = window.setTimeout(scheduleNext, intervalMs);
+    };
+    this.bgmTimerId = window.setTimeout(scheduleNext, 60);
+  }
+
+  private stopBgmTimer(): void {
+    if (this.bgmTimerId !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.bgmTimerId);
+      this.bgmTimerId = null;
+    }
+  }
+
+  private triggerBgmStep(): void {
+    const ctx = this.ensureContext();
+    const out = this.musicGain;
+    if (!ctx || !out) return;
+
+    const now = ctx.currentTime;
+    const step = this.bgmStep++;
+    const bassFreq = BGM_BASS_PATTERN[Math.floor(step / 2) % BGM_BASS_PATTERN.length];
+    const arpFreq = BGM_ARP_PATTERN[step % BGM_ARP_PATTERN.length];
+
+    // Driving synthwave pulse bass every 2 steps (or every step in car mode)
+    if (step % 2 === 0 || this.bgmCarMode) {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(this.bgmCarMode ? bassFreq * 1.122 : bassFreq, now);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(this.bgmCarMode ? 520 : 380, now);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(out);
+      osc.start(now);
+      osc.stop(now + 0.16);
+    }
+
+    // Crisp anime cyber-arp melody layer when moving fast or in turbo car
+    if (this.bgmSpeedFactor >= 1.15 || this.bgmCarMode || step % 2 === 1) {
+      const lead = ctx.createOscillator();
+      const leadGain = ctx.createGain();
+      lead.type = this.bgmCarMode ? 'square' : 'triangle';
+      lead.frequency.setValueAtTime(arpFreq * (this.bgmCarMode ? 1.122 : 1.0), now);
+
+      const peak = this.bgmCarMode ? 0.12 : 0.085;
+      leadGain.gain.setValueAtTime(0.001, now);
+      leadGain.gain.exponentialRampToValueAtTime(peak, now + 0.01);
+      leadGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      lead.connect(leadGain);
+      leadGain.connect(out);
+      lead.start(now);
+      lead.stop(now + 0.13);
+    }
+  }
+
   private playBuffer(key: SfxKey, volume = 0.5, playbackRate = 1.0): boolean {
     const ctx = this.ensureContext();
-    if (!ctx) return false;
+    const out = this.sfxGain;
+    if (!ctx || !out || this.sfxVolume <= 0.01) return false;
     const buf = this.buffers.get(key);
     if (!buf) return false;
 
@@ -94,7 +233,7 @@ export class SoundEngine {
     const gain = ctx.createGain();
     gain.gain.value = volume;
     src.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(out);
     src.start(0);
     return true;
   }
@@ -156,6 +295,42 @@ export class SoundEngine {
     const freq = scale[this.coinCombo] ?? 1046.5;
     this.tone(ctx, freq, freq * 1.015, 0.11, 'sine', 0.13, now);
     this.tone(ctx, freq * 1.5, freq * 1.5, 0.09, 'triangle', 0.05, now + 0.025);
+  }
+
+  public playLetterCollect(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 659.25, 987.77, 0.13, 'triangle', 0.16, now);
+    this.tone(ctx, 987.77, 1318.51, 0.16, 'sine', 0.14, now + 0.05);
+  }
+
+  public playWordComplete(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51];
+    notes.forEach((n, idx) => {
+      this.tone(ctx, n, n * 1.01, 0.18, 'triangle', 0.15, now + idx * 0.065);
+    });
+  }
+
+  public playRecordBreak(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.tone(ctx, 587.33, 587.33, 0.12, 'triangle', 0.15, now);
+    this.tone(ctx, 880.0, 1174.66, 0.24, 'sine', 0.18, now + 0.07);
+    this.tone(ctx, 1174.66, 1567.98, 0.28, 'triangle', 0.15, now + 0.16);
+  }
+
+  public playGachaSpin(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [392, 493.88, 587.33, 783.99, 987.77].forEach((f, idx) => {
+      this.tone(ctx, f, f * 1.04, 0.09, 'sine', 0.12, now + idx * 0.055);
+    });
   }
 
   public playBump(): void {
@@ -275,6 +450,8 @@ export class SoundEngine {
     peakGain: number,
     startTime: number,
   ): void {
+    const out = this.sfxGain;
+    if (!out || this.sfxVolume <= 0.01) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type;
@@ -286,12 +463,14 @@ export class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(out);
     osc.start(startTime);
     osc.stop(startTime + duration + 0.02);
   }
 
   private noiseBurst(ctx: AudioContext, duration: number, peakGain: number, startTime: number): void {
+    const out = this.sfxGain;
+    if (!out || this.sfxVolume <= 0.01) return;
     const sampleCount = Math.floor(ctx.sampleRate * duration);
     const buffer = ctx.createBuffer(1, sampleCount, ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -311,11 +490,12 @@ export class SoundEngine {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(out);
     source.start(startTime);
   }
 
   public dispose(): void {
+    this.stopBgmTimer();
     this.buffers.clear();
     if (this.ctx) {
       void this.ctx.close();

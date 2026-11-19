@@ -1,14 +1,16 @@
 import React from 'react';
-import { QUALITY_PRESETS, QualityLevel } from '../types/game';
+import { FpsLimit, QUALITY_PRESETS, QualityLevel } from '../types/game';
 import { HomeIcon, PlayIcon, RestartIcon, VolumeIcon } from './Icons';
 
 interface PauseModalProps {
   quality: QualityLevel;
+  fpsLimit: FpsLimit;
   muted: boolean;
   onResume: () => void;
   onRestart: () => void;
   onHome: () => void;
   onQualityChange: (quality: QualityLevel) => void;
+  onFpsLimitChange: (fps: FpsLimit) => void;
   onToggleMute: () => void;
 }
 
@@ -16,11 +18,13 @@ const QUALITY_OPTIONS: QualityLevel[] = ['low', 'medium', 'high'];
 
 export const PauseModal: React.FC<PauseModalProps> = ({
   quality,
+  fpsLimit,
   muted,
   onResume,
   onRestart,
   onHome,
   onQualityChange,
+  onFpsLimitChange,
   onToggleMute,
 }) => {
   return (
@@ -39,6 +43,23 @@ export const PauseModal: React.FC<PauseModalProps> = ({
               {QUALITY_PRESETS[q].label}
             </button>
           ))}
+        </div>
+
+        <div className="quality-segmented" role="group" aria-label="Limite FPS">
+          <button
+            type="button"
+            className={`quality-btn ${fpsLimit === 30 ? 'active' : ''}`}
+            onClick={() => onFpsLimitChange(30)}
+          >
+            30 FPS
+          </button>
+          <button
+            type="button"
+            className={`quality-btn ${fpsLimit === 60 ? 'active' : ''}`}
+            onClick={() => onFpsLimitChange(60)}
+          >
+            60 FPS
+          </button>
         </div>
 
         <div className="modal-actions">

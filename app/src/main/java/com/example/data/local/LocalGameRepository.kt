@@ -3,14 +3,18 @@ package com.example.data.local
 import android.content.Context
 import androidx.room.withTransaction
 import com.example.data.model.ChestRewardResult
+import com.example.data.model.GachaDrawResult
 import com.example.data.model.InboxMessage
 import com.example.data.model.LeaderboardEntry
+import com.example.data.model.LoginRewardResult
 import com.example.data.model.PlayerProfile
+import com.example.data.model.RushWordResult
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -59,6 +63,7 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
                 displayNameLower = "ryuplayer",
                 dailyMissionResetKey = currentDailyResetKey(),
                 weeklyMissionResetKey = currentWeeklyResetKey(),
+                rushResetKey = currentDailyResetKey(),
                 updatedAtMs = nowMs,
               )
             dao.upsertProfile(fresh)
@@ -109,13 +114,19 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
     val today = currentDailyResetKey()
     val thisWeek = currentWeeklyResetKey()
     val needsDailyReset = entity.dailyMissionResetKey != today
+    val needsRushReset = entity.rushResetKey != today
     val needsWeeklyReset = entity.weeklyMissionResetKey != thisWeek
     val nowMs = System.currentTimeMillis()
     val multiplierExpired = entity.multiplierExpiresAt > 0L && entity.multiplierExpiresAt <= nowMs
+    val seasonOutOfBounds = entity.seasonLevel < 1L || entity.seasonLevel > MAX_SEASON_TIER
 
-    if (!needsDailyReset && !needsWeeklyReset && !multiplierExpired) {
+    if (!needsDailyReset && !needsRushReset && !needsWeeklyReset && !multiplierExpired && !seasonOutOfBounds) {
       return entity
     }
+
+    val clampedSeasonLevel = entity.seasonLevel.coerceIn(1L, MAX_SEASON_TIER)
+    val clampedSeasonXp =
+      if (entity.seasonLevel > MAX_SEASON_TIER) 100L else entity.seasonXp.coerceIn(0L, 100L)
 
     val updated =
       entity.copy(
@@ -124,6 +135,11 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
           if (needsDailyReset) false else entity.dailyMissionCoinsClaimed,
         dailyMissionRuns = if (needsDailyReset) 0L else entity.dailyMissionRuns,
         dailyMissionRunsClaimed = if (needsDailyReset) false else entity.dailyMissionRunsClaimed,
+        dailyNearMisses = if (needsDailyReset) 0L else entity.dailyNearMisses,
+        dailyNearMissesClaimed =
+          if (needsDailyReset) false else entity.dailyNearMissesClaimed,
+        dailyShibaUses = if (needsDailyReset) 0L else entity.dailyShibaUses,
+        dailyShibaUsesClaimed = if (needsDailyReset) false else entity.dailyShibaUsesClaimed,
         dailyMissionResetKey = if (needsDailyReset) today else entity.dailyMissionResetKey,
         weeklyMissionDistance = if (needsWeeklyReset) 0L else entity.weeklyMissionDistance,
         weeklyMissionDistanceClaimed =
@@ -131,9 +147,19 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
         weeklyMissionJumps = if (needsWeeklyReset) 0L else entity.weeklyMissionJumps,
         weeklyMissionJumpsClaimed =
           if (needsWeeklyReset) false else entity.weeklyMissionJumpsClaimed,
+        weeklyCarDistance = if (needsWeeklyReset) 0L else entity.weeklyCarDistance,
+        weeklyCarDistanceClaimed =
+          if (needsWeeklyReset) false else entity.weeklyCarDistanceClaimed,
+        weeklyTrainJumps = if (needsWeeklyReset) 0L else entity.weeklyTrainJumps,
+        weeklyTrainJumpsClaimed =
+          if (needsWeeklyReset) false else entity.weeklyTrainJumpsClaimed,
         weeklyMissionResetKey = if (needsWeeklyReset) thisWeek else entity.weeklyMissionResetKey,
+        rushLettersMask = if (needsRushReset) 0 else entity.rushLettersMask,
+        rushResetKey = if (needsRushReset) today else entity.rushResetKey,
         activeMultiplier = if (multiplierExpired) 1L else entity.activeMultiplier,
         multiplierExpiresAt = if (multiplierExpired) 0L else entity.multiplierExpiresAt,
+        seasonLevel = clampedSeasonLevel,
+        seasonXp = clampedSeasonXp,
         updatedAtMs = nowMs,
       )
     dao.upsertProfile(updated)
@@ -287,6 +313,11 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
     consumedShield: Boolean = false,
     consumedMultiplier: Boolean = false,
     consumedHeadStart: Boolean = false,
+    nearMisses: Long = 0L,
+    shibaActivations: Long = 0L,
+    carDistance: Long = 0L,
+    trainJumps: Long = 0L,
+    rushLettersMaskEarned: Int = 0,
   ): Result<PlayerProfile> {
     return try {
       val updated =
@@ -300,6 +331,11 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
           val safeSakura = sakuraTokensEarned.coerceAtLeast(0L)
           val safeJumps = jumps.coerceAtLeast(0L)
           val safeSlides = slides.coerceAtLeast(0L)
+          val safeNearMisses = nearMisses.coerceAtLeast(0L)
+          val safeShibaUses = shibaActivations.coerceAtLeast(0L)
+          val safeCarDist = carDistance.coerceAtLeast(0L)
+          val safeTrainJumps = trainJumps.coerceAtLeast(0L)
+          val safeRushMask = profile.rushLettersMask or (rushLettersMaskEarned and 0x0F)
 
           val earnedXp = (safeDistance / 8L + safeCoins * 2L + 60L).coerceAtLeast(40L)
           val (newLevel, newXp, newXpToNext) =
@@ -316,8 +352,12 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
           val newTotalCoins = profile.totalCoinsCollected + safeCoins
           val newDailyCoins = profile.dailyMissionCoins + safeCoins
           val newDailyRuns = profile.dailyMissionRuns + 1L
+          val newDailyNearMisses = profile.dailyNearMisses + safeNearMisses
+          val newDailyShibaUses = profile.dailyShibaUses + safeShibaUses
           val newWeeklyDist = profile.weeklyMissionDistance + safeDistance
           val newWeeklyJumps = profile.weeklyMissionJumps + safeJumps
+          val newWeeklyCarDist = profile.weeklyCarDistance + safeCarDist
+          val newWeeklyTrainJumps = profile.weeklyTrainJumps + safeTrainJumps
 
           val newMagnets =
             if (consumedMagnet && profile.inventoryMagnets > 0) profile.inventoryMagnets - 1
@@ -382,10 +422,15 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
               eventSakuraTokens = profile.eventSakuraTokens + safeSakura,
               dailyMissionCoins = newDailyCoins,
               dailyMissionRuns = newDailyRuns,
+              dailyNearMisses = newDailyNearMisses,
+              dailyShibaUses = newDailyShibaUses,
               weeklyMissionDistance = newWeeklyDist,
               weeklyMissionJumps = newWeeklyJumps,
+              weeklyCarDistance = newWeeklyCarDist,
+              weeklyTrainJumps = newWeeklyTrainJumps,
               totalJumps = profile.totalJumps + safeJumps,
               totalSlides = profile.totalSlides + safeSlides,
+              rushLettersMask = safeRushMask,
               updatedAtMs = nowMs,
             )
           dao.upsertProfile(next)
@@ -551,8 +596,12 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
 
           var dailyCoinsClaimed = current.dailyMissionCoinsClaimed
           var dailyRunsClaimed = current.dailyMissionRunsClaimed
+          var dailyNearMissesClaimed = current.dailyNearMissesClaimed
+          var dailyShibaUsesClaimed = current.dailyShibaUsesClaimed
           var weeklyDistanceClaimed = current.weeklyMissionDistanceClaimed
           var weeklyJumpsClaimed = current.weeklyMissionJumpsClaimed
+          var weeklyCarDistClaimed = current.weeklyCarDistanceClaimed
+          var weeklyTrainJumpsClaimed = current.weeklyTrainJumpsClaimed
 
           when (missionId) {
             "daily_coins" -> {
@@ -572,6 +621,23 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
               rewardGems = 10L
               rewardSeasonXp = 50L
             }
+            "daily_nearmiss" -> {
+              if (current.dailyNearMissesClaimed || current.dailyNearMisses < 8L) {
+                throw IllegalStateException("Mission non réclamable")
+              }
+              dailyNearMissesClaimed = true
+              rewardCoins = 900L
+              rewardGems = 10L
+              rewardSeasonXp = 50L
+            }
+            "daily_shiba" -> {
+              if (current.dailyShibaUsesClaimed || current.dailyShibaUses < 3L) {
+                throw IllegalStateException("Mission non réclamable")
+              }
+              dailyShibaUsesClaimed = true
+              rewardCoins = 1200L
+              rewardSeasonXp = 60L
+            }
             "weekly_distance" -> {
               if (current.weeklyMissionDistanceClaimed || current.weeklyMissionDistance < 5000L) {
                 throw IllegalStateException("Mission hebdo non réclamable")
@@ -589,6 +655,23 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
               rewardGems = 20L
               rewardSeasonXp = 80L
             }
+            "weekly_car_dist" -> {
+              if (current.weeklyCarDistanceClaimed || current.weeklyCarDistance < 1200L) {
+                throw IllegalStateException("Mission hebdo non réclamable")
+              }
+              weeklyCarDistClaimed = true
+              rewardGems = 35L
+              rewardSeasonXp = 90L
+            }
+            "weekly_train_jumps" -> {
+              if (current.weeklyTrainJumpsClaimed || current.weeklyTrainJumps < 12L) {
+                throw IllegalStateException("Mission hebdo non réclamable")
+              }
+              weeklyTrainJumpsClaimed = true
+              rewardCoins = 1800L
+              rewardGems = 25L
+              rewardSeasonXp = 90L
+            }
             else -> throw IllegalArgumentException("Mission inconnue: $missionId")
           }
 
@@ -597,8 +680,12 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
             current.copy(
               dailyMissionCoinsClaimed = dailyCoinsClaimed,
               dailyMissionRunsClaimed = dailyRunsClaimed,
+              dailyNearMissesClaimed = dailyNearMissesClaimed,
+              dailyShibaUsesClaimed = dailyShibaUsesClaimed,
               weeklyMissionDistanceClaimed = weeklyDistanceClaimed,
               weeklyMissionJumpsClaimed = weeklyJumpsClaimed,
+              weeklyCarDistanceClaimed = weeklyCarDistClaimed,
+              weeklyTrainJumpsClaimed = weeklyTrainJumpsClaimed,
               coins = current.coins + rewardCoins,
               gems = current.gems + rewardGems,
               seasonLevel = sLevel,
@@ -609,6 +696,297 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
           next.toPlayerProfile()
         }
       Result.success(updated)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun claimDailyLogin(): Result<LoginRewardResult> {
+    return try {
+      val result =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          val today = currentDailyResetKey()
+          if (current.loginLastClaimKey == today) {
+            throw IllegalStateException("Récompense quotidienne déjà réclamée aujourd'hui.")
+          }
+          val nextDay =
+            if (current.loginStreakDay <= 0 || current.loginStreakDay >= 7) 1
+            else current.loginStreakDay + 1
+
+          val reward =
+            when (nextDay) {
+              1 -> LoginRewardResult(1, "Jour 1 · Échauffement", "+400 Pièces", 400L, 0L, 0L, 0L, 0L, 0L, 0L)
+              2 -> LoginRewardResult(2, "Jour 2 · Éclat Neko", "+15 Gemmes", 0L, 15L, 0L, 0L, 0L, 0L, 0L)
+              3 -> LoginRewardResult(3, "Jour 3 · Kit Tactique", "+300 Pièces + 1 Aimant + 1 Bouclier", 300L, 0L, 1L, 1L, 0L, 0L, 0L)
+              4 -> LoginRewardResult(4, "Jour 4 · Trésor Dojo", "+1 000 Pièces + 10 Gemmes", 1000L, 10L, 0L, 0L, 0L, 0L, 0L)
+              5 -> LoginRewardResult(5, "Jour 5 · Nitro & Boost", "+1 Mult x5 + 1 Turbo Départ", 0L, 0L, 0L, 0L, 1L, 1L, 0L)
+              6 -> LoginRewardResult(6, "Jour 6 · Coffre Diamant", "+500 Pièces + 30 Gemmes", 500L, 30L, 0L, 0L, 0L, 0L, 0L)
+              else -> LoginRewardResult(7, "Jour 7 · Pacte Impérial", "+2 500 Pièces + 50 Gemmes + 15 Sakura", 2500L, 50L, 0L, 0L, 0L, 0L, 15L)
+            }
+
+          val next =
+            current.copy(
+              coins = current.coins + reward.coins,
+              gems = current.gems + reward.gems,
+              inventoryMagnets = current.inventoryMagnets + reward.magnets,
+              inventoryShields = current.inventoryShields + reward.shields,
+              inventoryMultipliers = current.inventoryMultipliers + reward.multipliers,
+              inventoryHeadStarts = current.inventoryHeadStarts + reward.headStarts,
+              eventSakuraTokens = current.eventSakuraTokens + reward.sakuraTokens,
+              loginStreakDay = nextDay,
+              loginLastClaimKey = today,
+              updatedAtMs = System.currentTimeMillis(),
+            )
+          dao.upsertProfile(next)
+          reward
+        }
+      Result.success(result)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun claimRushWordBonus(): Result<RushWordResult> {
+    return try {
+      val result =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          if ((current.rushLettersMask and 0x0F) != 0x0F) {
+            throw IllegalStateException("Collectez les 4 lettres R-U-S-H sur les rails d'abord.")
+          }
+          val coinsBonus = 400L
+          val gemsBonus = 25L
+          val seasonXpBonus = 100L
+          val (sLevel, sXp) = applySeasonXp(current.seasonLevel, current.seasonXp + seasonXpBonus)
+          val nextCompleted = current.rushWordsCompleted + 1L
+          val next =
+            current.copy(
+              coins = current.coins + coinsBonus,
+              gems = current.gems + gemsBonus,
+              seasonLevel = sLevel,
+              seasonXp = sXp,
+              rushLettersMask = 0,
+              rushWordsCompleted = nextCompleted,
+              updatedAtMs = System.currentTimeMillis(),
+            )
+          dao.upsertProfile(next)
+          RushWordResult(coinsBonus, gemsBonus, seasonXpBonus, nextCompleted)
+        }
+      Result.success(result)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun drawDojoCapsule(currencyMode: String): Result<GachaDrawResult> {
+    return try {
+      val result =
+        db.withTransaction {
+          val current = getNormalizedEntityOrThrow()
+          val profile = current.toPlayerProfile()
+
+          val coinsAfterCost: Long
+          val sakuraAfterCost: Long
+          when (currencyMode) {
+            "coins" -> {
+              if (profile.coins < CAPSULE_COIN_COST) {
+                throw IllegalStateException("Il faut $CAPSULE_COIN_COST pièces pour lancer une Capsule Dojo.")
+              }
+              coinsAfterCost = profile.coins - CAPSULE_COIN_COST
+              sakuraAfterCost = profile.eventSakuraTokens
+            }
+            "sakura" -> {
+              if (profile.eventSakuraTokens < CAPSULE_SAKURA_COST) {
+                throw IllegalStateException("Il faut $CAPSULE_SAKURA_COST jetons Sakura pour lancer une Capsule Dojo.")
+              }
+              coinsAfterCost = profile.coins
+              sakuraAfterCost = profile.eventSakuraTokens - CAPSULE_SAKURA_COST
+            }
+            else -> throw IllegalArgumentException("Mode capsule inconnu: $currencyMode")
+          }
+
+          val roll = Random.nextInt(100)
+          var nextCoins = coinsAfterCost
+          var nextGems = profile.gems
+          var nextSakura = sakuraAfterCost
+          var magnets = profile.inventoryMagnets
+          var shields = profile.inventoryShields
+          var mults = profile.inventoryMultipliers
+          var headStarts = profile.inventoryHeadStarts
+          var unlockedHeroes = current.unlockedHeroIdsJson
+          var unlockedComps = current.unlockedCompanionIdsJson
+          var unlockedCars = current.unlockedCarIdsJson
+          var equippedHero = current.equippedHeroId
+          var equippedComp = current.equippedCompanionId
+          var equippedCar = current.equippedCarId
+
+          val outcome: GachaDrawResult =
+            when {
+              roll < 25 -> {
+                magnets += 1L
+                shields += 1L
+                headStarts += 1L
+                GachaDrawResult(
+                  rewardId = "boost_pack",
+                  title = "Pack Dojo Tactique",
+                  rarity = "Rare",
+                  description = "+1 Aimant Neko, +1 Bouclier Dojo et +1 Turbo Départ !",
+                  coinsAdded = 0L,
+                  gemsAdded = 0L,
+                  sakuraAdded = 0L,
+                  unlockedType = null,
+                  unlockedId = null,
+                )
+              }
+              roll < 45 -> {
+                mults += 1L
+                nextCoins += 300L
+                GachaDrawResult(
+                  rewardId = "mult_x5_pack",
+                  title = "Surcharge Score x5",
+                  rarity = "Épique",
+                  description = "+1 Multiplicateur x5 et +300 Pièces bonus !",
+                  coinsAdded = 300L,
+                  gemsAdded = 0L,
+                  sakuraAdded = 0L,
+                  unlockedType = null,
+                  unlockedId = null,
+                )
+              }
+              roll < 65 -> {
+                nextCoins += 1200L
+                GachaDrawResult(
+                  rewardId = "coins_jackpot",
+                  title = "Pluie d'Or Shibuya",
+                  rarity = "Rare",
+                  description = "+1 200 Pièces ajoutées à votre coffre !",
+                  coinsAdded = 1200L,
+                  gemsAdded = 0L,
+                  sakuraAdded = 0L,
+                  unlockedType = null,
+                  unlockedId = null,
+                )
+              }
+              roll < 83 -> {
+                nextGems += 18L
+                GachaDrawResult(
+                  rewardId = "gems_crate",
+                  title = "Cristaux Néon",
+                  rarity = "Épique",
+                  description = "+18 Gemmes étincelantes pour le Showroom !",
+                  coinsAdded = 0L,
+                  gemsAdded = 18L,
+                  sakuraAdded = 0L,
+                  unlockedType = null,
+                  unlockedId = null,
+                )
+              }
+              roll < 93 -> {
+                nextSakura += 10L
+                nextCoins += 400L
+                GachaDrawResult(
+                  rewardId = "sakura_bless",
+                  title = "Bénédiction Sakura",
+                  rarity = "Épique",
+                  description = "+10 Jetons Sakura et +400 Pièces !",
+                  coinsAdded = 400L,
+                  gemsAdded = 0L,
+                  sakuraAdded = 10L,
+                  unlockedType = null,
+                  unlockedId = null,
+                )
+              }
+              else -> {
+                val lockedCandidates =
+                  listOf(
+                    Triple("companion", "sakura_shiba", "Shiba Sakura"),
+                    Triple("companion", "shiba_cyber", "Cyber Shiba"),
+                    Triple("car", "sakura_spider", "Sakura Spider"),
+                    Triple("car", "cyber_kitsune", "Cyber Kitsune EV"),
+                    Triple("hero", "dragnir", "Dragnir"),
+                    Triple("hero", "sigma", "Sigma"),
+                  ).filter { (type, id, _) ->
+                    when (type) {
+                      "hero" -> !profile.unlockedHeroIds.contains(id)
+                      "car" -> !profile.unlockedCarIds.contains(id)
+                      else -> !profile.unlockedCompanionIds.contains(id)
+                    }
+                  }
+
+                if (lockedCandidates.isNotEmpty()) {
+                  val pick = lockedCandidates[Random.nextInt(lockedCandidates.size)]
+                  when (pick.first) {
+                    "hero" -> {
+                      unlockedHeroes = LocalProfileEntity.encodeStringList((profile.unlockedHeroIds + pick.second).distinct())
+                      equippedHero = pick.second
+                    }
+                    "car" -> {
+                      unlockedCars = LocalProfileEntity.encodeStringList((profile.unlockedCarIds + pick.second).distinct())
+                      equippedCar = pick.second
+                    }
+                    else -> {
+                      unlockedComps = LocalProfileEntity.encodeStringList((profile.unlockedCompanionIds + pick.second).distinct())
+                      equippedComp = pick.second
+                    }
+                  }
+                  GachaDrawResult(
+                    rewardId = "unlock_${pick.second}",
+                    title = "DÉBLOCAGE : ${pick.third}",
+                    rarity = "Légendaire",
+                    description = "Incroyable ! ${pick.third} est débloqué et équipé automatiquement !",
+                    coinsAdded = 0L,
+                    gemsAdded = 0L,
+                    sakuraAdded = 0L,
+                    unlockedType = pick.first,
+                    unlockedId = pick.second,
+                  )
+                } else {
+                  nextGems += 35L
+                  nextCoins += 1500L
+                  GachaDrawResult(
+                    rewardId = "mythic_refund",
+                    title = "Jackpot Impérial",
+                    rarity = "Légendaire",
+                    description = "Lot mystère déjà possédé : +35 Gemmes et +1 500 Pièces !",
+                    coinsAdded = 1500L,
+                    gemsAdded = 35L,
+                    sakuraAdded = 0L,
+                    unlockedType = null,
+                    unlockedId = null,
+                  )
+                }
+              }
+            }
+
+          val next =
+            current.copy(
+              coins = nextCoins,
+              gems = nextGems,
+              eventSakuraTokens = nextSakura,
+              inventoryMagnets = magnets,
+              inventoryShields = shields,
+              inventoryMultipliers = mults,
+              inventoryHeadStarts = headStarts,
+              unlockedHeroIdsJson = unlockedHeroes,
+              equippedHeroId = equippedHero,
+              unlockedCompanionIdsJson = unlockedComps,
+              equippedCompanionId = equippedComp,
+              unlockedCarIdsJson = unlockedCars,
+              equippedCarId = equippedCar,
+              gachaDraws = current.gachaDraws + 1L,
+              updatedAtMs = System.currentTimeMillis(),
+            )
+          dao.upsertProfile(next)
+          outcome
+        }
+      Result.success(result)
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
@@ -945,11 +1323,15 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
   }
 
   private fun applySeasonXp(seasonLevel: Long, seasonXp: Long): Pair<Long, Long> {
-    var curLvl = seasonLevel.coerceAtLeast(1L)
+    var curLvl = seasonLevel.coerceIn(1L, MAX_SEASON_TIER)
     var curXp = seasonXp.coerceAtLeast(0L)
-    while (curXp >= 100L && curLvl < 100L) {
+    while (curXp >= 100L && curLvl < MAX_SEASON_TIER) {
       curXp -= 100L
       curLvl += 1L
+    }
+    if (curLvl >= MAX_SEASON_TIER) {
+      curLvl = MAX_SEASON_TIER
+      curXp = curXp.coerceAtMost(100L)
     }
     return curLvl to curXp
   }
@@ -957,7 +1339,10 @@ class LocalGameRepository(private val db: AnimeRushDatabase) {
   private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
   companion object {
+    const val MAX_SEASON_TIER = 10L
     const val FREE_CHEST_COOLDOWN_MS = 4L * 60L * 60L * 1000L
     const val MULTIPLIER_DURATION_MS = 15L * 60L * 1000L
+    const val CAPSULE_COIN_COST = 600L
+    const val CAPSULE_SAKURA_COST = 12L
   }
 }

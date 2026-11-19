@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  CAPSULE_DOJO_COSTS,
+  CAPSULE_DOJO_ODDS,
   CAR_CATALOG,
+  COMPANION_CATALOG,
+  DAILY_LOGIN_REWARDS,
   HERO_CATALOG,
+  MISSIONS_CATALOG,
+  SEASON_TIERS,
   UPGRADE_CATALOG,
   getCarById,
+  getCompanionById,
   getHeroById,
   getUpgradeNextCost,
 } from '../src/config/catalog.ts';
@@ -46,8 +53,26 @@ test('every hero defines valid passive and rechargeable active power definitions
   }
 });
 
-test('convertible car catalog includes Yellow Cab GT and distinct models with valid perks', () => {
-  assert.ok(CAR_CATALOG.length >= 6, `Expected >= 6 convertible cars, got ${CAR_CATALOG.length}`);
+test('hero rarity pricing scales from Rare ~5000 coins up to 100000 coins and 250 gems cap', () => {
+  const paidRareCoinHeroes = HERO_CATALOG.filter(
+    (h) => h.rarity === 'Rare' && h.currency === 'coins' && h.cost > 0,
+  );
+  const rareAvg =
+    paidRareCoinHeroes.reduce((sum, h) => sum + h.cost, 0) / paidRareCoinHeroes.length;
+  assert.equal(rareAvg, 5000, `Expected Rare coin hero average to be 5000, got ${rareAvg}`);
+
+  const maxCoinCost = Math.max(
+    ...HERO_CATALOG.filter((h) => h.currency === 'coins').map((h) => h.cost),
+  );
+  const maxGemCost = Math.max(
+    ...HERO_CATALOG.filter((h) => h.currency === 'gems').map((h) => h.cost),
+  );
+  assert.equal(maxCoinCost, 100000);
+  assert.equal(maxGemCost, 250);
+});
+
+test('convertible car catalog includes at least 15 models with unique IDs and valid perks', () => {
+  assert.ok(CAR_CATALOG.length >= 15, `Expected >= 15 convertible cars, got ${CAR_CATALOG.length}`);
 
   const carIds = new Set(CAR_CATALOG.map((car) => car.id));
   assert.equal(carIds.size, CAR_CATALOG.length, 'Car IDs must all be unique');
@@ -63,6 +88,58 @@ test('convertible car catalog includes Yellow Cab GT and distinct models with va
     assert.ok(car.extraDurationSec >= 0);
     assert.ok(car.turboSpeedBonus >= 0);
   }
+});
+
+test('companion catalog exposes 10 Shibas each with passive and active power specs', () => {
+  assert.equal(
+    COMPANION_CATALOG.length,
+    10,
+    `Expected exactly 10 Shibas, got ${COMPANION_CATALOG.length}`,
+  );
+
+  const compIds = new Set(COMPANION_CATALOG.map((c) => c.id));
+  assert.equal(compIds.size, 10, 'Companion IDs must all be unique');
+
+  const classic = getCompanionById('shiba_classic');
+  assert.equal(classic.cost, 0);
+  assert.equal(classic.power.activeEffect, 'COIN_X2');
+  assert.equal(classic.power.activeDurationSec, 10);
+
+  for (const comp of COMPANION_CATALOG) {
+    assert.ok(comp.power.passiveLabel.length > 0);
+    assert.ok(comp.power.activeName.length > 0);
+    assert.ok(comp.power.activeDurationSec > 0);
+    assert.ok(comp.power.chargeCostSec >= 8);
+  }
+});
+
+test('missions catalog supports separate daily and weekly pages with varied objectives', () => {
+  const dailyMissions = MISSIONS_CATALOG.filter((m) => m.scope === 'daily');
+  const weeklyMissions = MISSIONS_CATALOG.filter((m) => m.scope === 'weekly');
+  assert.ok(dailyMissions.length >= 4, 'Expected at least 4 daily missions');
+  assert.ok(weeklyMissions.length >= 4, 'Expected at least 4 weekly missions');
+
+  const ids = new Set(MISSIONS_CATALOG.map((m) => m.id));
+  for (const id of ['daily_nearmiss', 'daily_shiba', 'weekly_car_dist', 'weekly_train_jumps']) {
+    assert.ok(ids.has(id), `Expected mission ${id}`);
+  }
+});
+
+test('daily login calendar defines 7 progressive days and Capsule Dojo odds total 100%', () => {
+  assert.equal(DAILY_LOGIN_REWARDS.length, 7);
+  assert.deepEqual(
+    DAILY_LOGIN_REWARDS.map((d) => d.day),
+    [1, 2, 3, 4, 5, 6, 7],
+  );
+  assert.equal(DAILY_LOGIN_REWARDS[6].isGrand, true);
+
+  assert.ok(CAPSULE_DOJO_COSTS.coins > 0);
+  assert.ok(CAPSULE_DOJO_COSTS.sakura > 0);
+  const totalPct = CAPSULE_DOJO_ODDS.reduce(
+    (sum, odd) => sum + parseInt(odd.chanceLabel.replace('%', ''), 10),
+    0,
+  );
+  assert.equal(totalPct, 100);
 });
 
 test('permanent upgrade catalog exposes 4 upgrades with monotonic level 1 to 5 costs', () => {
@@ -82,4 +159,12 @@ test('permanent upgrade catalog exposes 4 upgrades with monotonic level 1 to 5 c
     assert.ok(upg.getEffectSummary(1).length > 0);
     assert.ok(upg.getEffectSummary(5).length > 0);
   }
+});
+
+test('season pass catalog exposes exactly 10 tiers numbered 1 to 10', () => {
+  assert.equal(SEASON_TIERS.length, 10);
+  assert.deepEqual(
+    SEASON_TIERS.map((t) => t.tier),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  );
 });

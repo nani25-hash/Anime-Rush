@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { SoundEngine } from '../audio/SoundEngine';
-import { CarDefinition, HeroDefinition, getCarById, getHeroById } from '../config/catalog';
+import {
+  CarDefinition,
+  CompanionDefinition,
+  HeroDefinition,
+  getCarById,
+  getCompanionById,
+  getHeroById,
+} from '../config/catalog';
 import {
   ActiveRunBoosts,
+  FpsLimit,
   GAME_CONSTANTS,
   GamePhase,
   HudSnapshot,
@@ -11,8 +19,14 @@ import {
   QUALITY_PRESETS,
   QualityLevel,
   RunTelemetry,
+  TutorialStep,
   loadBestScore,
+  loadMusicVolume,
+  loadSavedFpsLimit,
+  loadSfxVolume,
+  loadTutorialDone,
   saveBestScore,
+  saveTutorialDone,
 } from '../types/game';
 import { ConvertibleCar3D } from './ConvertibleCar3D';
 import { EnvironmentBuilder } from './EnvironmentBuilder';
@@ -20,6 +34,7 @@ import { InputAction, InputManager } from './InputManager';
 import { ObstacleAndCoinPools } from './ObstacleAndCoinPools';
 import { RunnerAnimState, RunnerCharacter } from './RunnerCharacter';
 import { ShibaCompanion } from './ShibaCompanion';
+import { computeNearMissCombo } from './collisionMath';
 import { createRadialShadowTexture } from './textures';
 import { WorldCurveUniforms, createWorldCurveUniforms } from './worldCurve';
 
@@ -27,6 +42,7 @@ export class AnimeRushEngine {
   private readonly container: HTMLElement;
   private readonly onHudChange: (snapshot: HudSnapshot) => void;
   private readonly onRunFinished?: (telemetry: RunTelemetry) => void;
+  private readonly onRushWordCompleted?: () => void;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
@@ -51,9 +67,13 @@ export class AnimeRushEngine {
   private simulationPaused = false;
   private rafId: number | null = null;
   private lastFrameMs = 0;
+  private lastRenderMs = 0;
+  private fpsLimit: FpsLimit = loadSavedFpsLimit();
+  private baseCameraFov = 58;
 
   // Equipped hero, companion & convertible car profile
   private equippedHero: HeroDefinition = getHeroById('ryu');
+  private equippedCompanion: CompanionDefinition = getCompanionById('shiba_classic');
   private equippedCar: CarDefinition = getCarById('yellow_cab_gt');
 
   // Runner physics & stamina state
@@ -88,9 +108,12 @@ export class AnimeRushEngine {
   private fuelUnits = 0;
   private carRemaining = 0;
 
-  // Dynamic Hero Power System
+  // Dynamic Hero & Shiba Power Systems
   private heroPowerCharge = 0;
   private heroPowerActiveTimer = 0;
+  private shibaPowerCharge = 0;
+  private shibaPowerActiveTimer = 0;
+  private shibaCoinMultFactor = 1;
   private invincibleSprintTimer = 0;
   private overdriveMultFactor = 1;
   private coinBonusAccumulator = 0;
@@ -113,6 +136,7 @@ export class AnimeRushEngine {
   private nextMilestoneMeters = 250;
   private milestoneLabel: string | null = null;
   private milestoneTimer = 0;
+  private runCoinGoalAnnounced = false;
 
   // Game-feel & camera effects
   private hitstopTimer = 0;
@@ -120,14 +144,25 @@ export class AnimeRushEngine {
   private introSweepTimer = 0;
   private hudSyncAccumulator = 0;
 
-  // Permanent Upgrades (Lv 1-5), Haptics, Biomes, Near-Miss & Revive
+  // Permanent Upgrades (Lv 1-5), Haptics, Biomes, Near-Miss Combo, RUSH Hunt, Tutorial & Record Gate
   private upgradeLevels = { magnet: 1, car: 1, shield: 1, score: 1 };
   private hapticsEnabled = true;
   private revivedUsed = false;
   private nearMissCount = 0;
+  private nearMissCombo = 0;
+  private nearMissComboTimer = 0;
   private nearMissBonusScore = 0;
   private nearMissLabel: string | null = null;
   private nearMissTimer = 0;
+  private shibaActivations = 0;
+  private carDistance = 0;
+  private trainJumps = 0;
+  private baseRushMask = 0;
+  private runRushMaskEarned = 0;
+  private rushCompletedThisRun = false;
+  private tutorialEnabled = !loadTutorialDone();
+  private tutorialStep: TutorialStep | null = null;
+  private recordGateMeters: number | null = null;
   private currentBiomeName = 'Sakura Ueno';
 
   constructor(
@@ -136,11 +171,13 @@ export class AnimeRushEngine {
     initialMuted: boolean,
     onHudChange: (snapshot: HudSnapshot) => void,
     onRunFinished?: (telemetry: RunTelemetry) => void,
+    onRushWordCompleted?: () => void,
   ) {
     this.container = container;
     this.onHudChange = onHudChange;
     this.onRunFinished = onRunFinished;
-    this.sound = new SoundEngine(initialMuted);
+    this.onRushWordCompleted = onRushWordCompleted;
+    this.sound = new SoundEngine(initialMuted, loadMusicVolume(), loadSfxVolume());
 
     this.renderer = this.createRenderer();
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -243,12 +280,45 @@ export class AnimeRushEngine {
     this.sound.setMuted(muted);
   }
 
+  public setFpsLimit(fps: FpsLimit): void {
+    this.fpsLimit = fps;
+  }
+
+  public setMusicVolume(vol: number): void {
+    this.sound.setMusicVolume(vol);
+  }
+
+  public setSfxVolume(vol: number): void {
+    this.sound.setSfxVolume(vol);
+  }
+
+  public setTutorialEnabled(enabled: boolean): void {
+    this.tutorialEnabled = enabled;
+    if (!enabled) {
+      this.tutorialStep = null;
+      this.emitHud();
+    }
+  }
+
+  public setRushLettersMask(mask: number): void {
+    this.baseRushMask = mask & 0x0f;
+    if (this.phase === 'TITLE') {
+      this.emitHud();
+    }
+  }
+
+  public playGachaSound(): void {
+    this.sound.unlock();
+    this.sound.playGachaSpin();
+  }
+
   public setLoadout(
     heroId: string,
     companionId: string,
     carId = 'yellow_cab_gt',
   ): void {
     this.equippedHero = getHeroById(heroId);
+    this.equippedCompanion = getCompanionById(companionId);
     this.equippedCar = getCarById(carId);
     this.runner.setSkin(heroId);
     this.shiba.setSkin(companionId);
@@ -407,6 +477,74 @@ export class AnimeRushEngine {
     this.emitHud();
   }
 
+  public activateShibaPower(): void {
+    if (this.phase !== 'PLAYING') return;
+    const spec = this.equippedCompanion.power;
+    if (this.shibaPowerCharge < spec.chargeCostSec || this.shibaPowerActiveTimer > 0) return;
+
+    this.sound.unlock();
+    this.sound.playPowerup();
+    this.triggerHaptic('medium');
+    this.shibaActivations++;
+    this.shibaPowerCharge = 0;
+    this.shibaPowerActiveTimer = spec.activeDurationSec;
+    this.shiba.setPowerAuraActive(true, this.equippedCompanion.coatHex);
+
+    const magnetBonus =
+      (this.equippedHero.power.passiveType === 'MAGNET_DURATION'
+        ? this.equippedHero.power.passiveValue
+        : 0) +
+      (spec.passiveType === 'MAGNET_DURATION' ? spec.passiveValue : 0) +
+      (this.upgradeLevels.magnet - 1) * 2.5;
+
+    switch (spec.activeEffect) {
+      case 'COIN_X2':
+        this.shibaCoinMultFactor = 2;
+        if (this.equippedCompanion.id === 'shiba_astral') {
+          this.magnetTimer = Math.max(this.magnetTimer, 8 + magnetBonus);
+        }
+        break;
+      case 'MAGNET_AURA':
+        this.magnetTimer = Math.max(this.magnetTimer, spec.activeDurationSec + magnetBonus);
+        break;
+      case 'SHIELD_BARK':
+        this.hasShield = true;
+        this.runner.setShieldActive(true);
+        this.magnetTimer = Math.max(this.magnetTimer, 6 + magnetBonus);
+        this.pools.destroyObstaclesAhead(this.runnerZ, 20);
+        break;
+      case 'FUEL_FETCH':
+        this.fuelUnits = Math.min(GAME_CONSTANTS.FUEL_MAX_UNITS, this.fuelUnits + 40);
+        this.magnetTimer = Math.max(this.magnetTimer, 6 + magnetBonus);
+        break;
+      case 'SAKURA_HOWL':
+        this.shibaCoinMultFactor = 2;
+        this.sakuraTokens += 3;
+        this.magnetTimer = Math.max(this.magnetTimer, 6 + magnetBonus);
+        break;
+      case 'SHOCKWAVE_DASH':
+        this.pools.destroyObstaclesAhead(this.runnerZ, 38);
+        this.invincibleSprintTimer = Math.max(this.invincibleSprintTimer, spec.activeDurationSec);
+        if (this.equippedCompanion.id === 'shiba_flame') {
+          this.fuelUnits = Math.min(GAME_CONSTANTS.FUEL_MAX_UNITS, this.fuelUnits + 35);
+        }
+        this.shakeIntensity = 0.28;
+        break;
+    }
+
+    const shibaPos = this.shiba.root.position;
+    this.pools.emitBurstPublic(
+      shibaPos.x,
+      Math.max(0.6, shibaPos.y + 0.5),
+      shibaPos.z,
+      18,
+      this.equippedCompanion.coatHex,
+    );
+    this.milestoneLabel = `${this.equippedCompanion.name.toUpperCase()} : ${spec.activeName.toUpperCase()} !`;
+    this.milestoneTimer = 1.7;
+    this.emitHud();
+  }
+
   private applyQuality(quality: QualityLevel): void {
     const preset = QUALITY_PRESETS[quality];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.maxDpr));
@@ -436,6 +574,7 @@ export class AnimeRushEngine {
     this.resetRunState(boosts);
     this.introSweepTimer = 0.68;
     this.phase = 'PLAYING';
+    this.sound.setBgmState(true, this.worldSpeed / GAME_CONSTANTS.BASE_SPEED, false);
     this.emitHud();
   }
 
@@ -446,6 +585,7 @@ export class AnimeRushEngine {
   public pauseRun(): void {
     if (this.phase === 'PLAYING') {
       this.phase = 'PAUSED';
+      this.sound.setBgmState(false);
       this.emitHud();
     }
   }
@@ -455,6 +595,7 @@ export class AnimeRushEngine {
       this.sound.unlock();
       this.phase = 'PLAYING';
       this.lastFrameMs = performance.now();
+      this.sound.setBgmState(true, this.worldSpeed / GAME_CONSTANTS.BASE_SPEED, this.carRemaining > 0);
       this.emitHud();
     }
   }
@@ -463,6 +604,7 @@ export class AnimeRushEngine {
     this.simulationPaused = false;
     this.resetRunState();
     this.phase = 'TITLE';
+    this.sound.setBgmState(false);
     this.emitHud();
   }
 
@@ -473,6 +615,7 @@ export class AnimeRushEngine {
     this.triggerHaptic('medium');
     this.revivedUsed = true;
     this.phase = 'PLAYING';
+    this.sound.setBgmState(true, this.worldSpeed / GAME_CONSTANTS.BASE_SPEED, this.carRemaining > 0);
     this.staminaLife = 2;
     this.lifeRegenTimer = 0;
     this.bumpInvulnTimer = 3.0;
@@ -506,9 +649,12 @@ export class AnimeRushEngine {
     this.bumpInvulnTimer = 0;
 
     const passive = this.equippedHero.power;
-    const startShieldPassive = passive.passiveType === 'START_SHIELD';
+    const shibaSpec = this.equippedCompanion.power;
+    const startShieldPassive =
+      passive.passiveType === 'START_SHIELD' || shibaSpec.passiveType === 'START_SHIELD';
     const magnetDurationBonus =
       (passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0) +
+      (shibaSpec.passiveType === 'MAGNET_DURATION' ? shibaSpec.passiveValue : 0) +
       (this.upgradeLevels.magnet - 1) * 2.5;
 
     this.consumedMagnet = Boolean(boosts?.useMagnet);
@@ -522,6 +668,7 @@ export class AnimeRushEngine {
     this.scoreMultiplier = this.consumedMultiplier ? 5 : this.baseAccountMultiplier;
     this.runner.setShieldActive(this.hasShield);
     this.runner.setPowerAuraActive(false);
+    this.shiba.setPowerAuraActive(false);
 
     this.fuelUnits = 0;
     this.carRemaining = 0;
@@ -529,14 +676,25 @@ export class AnimeRushEngine {
 
     this.heroPowerCharge = passive.chargeCostSec * 0.45; // Start 45% charged for snappy gameplay
     this.heroPowerActiveTimer = 0;
+    this.shibaPowerCharge = shibaSpec.chargeCostSec; // Shiba power ready immediately on run start!
+    this.shibaPowerActiveTimer = 0;
+    this.shibaCoinMultFactor = 1;
     this.invincibleSprintTimer = 0;
     this.overdriveMultFactor = 1;
     this.coinBonusAccumulator = 0;
     this.revivedUsed = false;
     this.nearMissCount = 0;
+    this.nearMissCombo = 0;
+    this.nearMissComboTimer = 0;
     this.nearMissBonusScore = 0;
     this.nearMissLabel = null;
     this.nearMissTimer = 0;
+    this.shibaActivations = 0;
+    this.carDistance = 0;
+    this.trainJumps = 0;
+    this.runRushMaskEarned = 0;
+    this.rushCompletedThisRun = false;
+    this.tutorialStep = this.tutorialEnabled ? 'SWIPE_LR' : null;
     this.currentBiomeName = 'Sakura Ueno';
     this.environment.setBiomeDistance(0, 10);
 
@@ -561,6 +719,7 @@ export class AnimeRushEngine {
         ? 'BOUCLIER PASSIF ACTIF !'
         : null;
     this.milestoneTimer = this.consumedHeadStart || startShieldPassive ? 1.5 : 0;
+    this.runCoinGoalAnnounced = false;
     this.hitstopTimer = 0;
     this.shakeIntensity = 0;
     this.introSweepTimer = 0;
@@ -573,6 +732,20 @@ export class AnimeRushEngine {
     this.shiba.root.rotation.y = 0;
     this.environment.reset();
     this.pools.reset();
+
+    if (this.bestScore > 0) {
+      const targetMeters = Math.max(
+        45,
+        Math.round(
+          this.bestScore / (GAME_CONSTANTS.DISTANCE_SCORE_RATE * Math.max(1, this.baseAccountMultiplier)),
+        ),
+      );
+      this.recordGateMeters = targetMeters;
+      this.pools.setRecordTargetMeters(targetMeters);
+    } else {
+      this.recordGateMeters = null;
+      this.pools.setRecordTargetMeters(null);
+    }
   }
 
   private handleInput = (action: InputAction): void => {
@@ -593,6 +766,10 @@ export class AnimeRushEngine {
           this.sound.playLaneSwitch();
           this.triggerHaptic('light');
         }
+        if (this.tutorialStep === 'SWIPE_LR') {
+          this.tutorialStep = 'JUMP';
+          this.emitHud();
+        }
         break;
       case 'RIGHT':
         if (this.targetLane < 1) {
@@ -601,14 +778,28 @@ export class AnimeRushEngine {
           this.sound.playLaneSwitch();
           this.triggerHaptic('light');
         }
+        if (this.tutorialStep === 'SWIPE_LR') {
+          this.tutorialStep = 'JUMP';
+          this.emitHud();
+        }
         break;
       case 'JUMP':
         this.jumpBufferTimer = GAME_CONSTANTS.INPUT_BUFFER_SEC;
+        if (this.tutorialStep === 'JUMP') {
+          this.tutorialStep = 'SLIDE';
+          this.emitHud();
+        }
         break;
       case 'SLIDE':
         this.slideBufferTimer = GAME_CONSTANTS.INPUT_BUFFER_SEC;
         if (!this.isGrounded) {
           this.velocityY = Math.min(this.velocityY, GAME_CONSTANTS.FAST_FALL_VELOCITY);
+        }
+        if (this.tutorialStep === 'SLIDE') {
+          this.tutorialStep = null;
+          this.tutorialEnabled = false;
+          saveTutorialDone(true);
+          this.emitHud();
         }
         break;
       case 'ACTIVATE_CAR':
@@ -617,6 +808,9 @@ export class AnimeRushEngine {
       case 'ACTIVATE_POWER':
         this.activateHeroPower();
         break;
+      case 'ACTIVATE_SHIBA_POWER':
+        this.activateShibaPower();
+        break;
     }
   };
 
@@ -624,18 +818,24 @@ export class AnimeRushEngine {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
-    this.camera.fov = w / h < 0.7 ? 62 : 56;
+    this.baseCameraFov = w / h < 0.7 ? 62 : 56;
+    this.camera.fov = this.baseCameraFov;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
   };
 
   private startLoop(): void {
     this.lastFrameMs = performance.now();
+    this.lastRenderMs = this.lastFrameMs;
     const tick = (nowMs: number) => {
       this.rafId = requestAnimationFrame(tick);
       if (this.simulationPaused && this.phase === 'TITLE') {
         return;
       }
+      if (this.fpsLimit === 30 && nowMs - this.lastRenderMs < 31) {
+        return;
+      }
+      this.lastRenderMs = nowMs;
       const rawDt = (nowMs - this.lastFrameMs) / 1000;
       this.lastFrameMs = nowMs;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
@@ -660,19 +860,19 @@ export class AnimeRushEngine {
       const lobbySpeed = 11.4;
       this.lobbyScrollZ -= lobbySpeed * dt;
       this.environment.update(dt, this.lobbyScrollZ, lobbySpeed);
-      this.runner.root.position.set(-0.36, 0, this.lobbyScrollZ);
-      this.runner.root.rotation.y = -0.18;
+      this.runner.root.position.set(0.08, 0, this.lobbyScrollZ);
+      this.runner.root.rotation.y = -0.14;
       this.runner.update(dt, 'TITLE', lobbySpeed, 0, 0);
-      this.shiba.root.rotation.y = -0.14;
-      this.shiba.update(dt, 'TITLE', lobbySpeed, -0.36, 0, this.lobbyScrollZ);
+      this.shiba.root.rotation.y = -0.12;
+      this.shiba.update(dt, 'TITLE', lobbySpeed, 0.08, 0, this.lobbyScrollZ);
 
       const t = performance.now() * 0.00055;
       this.camera.position.set(
-        0.55 + Math.sin(t) * 0.22,
-        2.02 + Math.cos(t * 0.8) * 0.06,
+        0.28 + Math.sin(t) * 0.16,
+        2.06 + Math.cos(t * 0.8) * 0.05,
         this.lobbyScrollZ + 5.75,
       );
-      this.camera.lookAt(0.08, 1.42, this.lobbyScrollZ - 20);
+      this.camera.lookAt(0.04, 1.36, this.lobbyScrollZ - 20);
       this.keyLight.position.set(9, 18, this.lobbyScrollZ + 12);
       this.keyLight.target.position.set(0, 0, this.lobbyScrollZ - 8);
       return;
@@ -688,8 +888,11 @@ export class AnimeRushEngine {
     }
 
     const passive = this.equippedHero.power;
+    const shibaSpec = this.equippedCompanion.power;
     const hasteFactor =
-      passive.passiveType === 'SKILL_HASTE' ? 1 + passive.passiveValue : 1;
+      1 +
+      (passive.passiveType === 'SKILL_HASTE' ? passive.passiveValue : 0) +
+      (shibaSpec.passiveType === 'SKILL_HASTE' ? shibaSpec.passiveValue : 0);
 
     // Car Turbo Countdown
     if (this.carRemaining > 0) {
@@ -714,6 +917,20 @@ export class AnimeRushEngine {
       this.heroPowerCharge = Math.min(
         passive.chargeCostSec,
         this.heroPowerCharge + dt * hasteFactor,
+      );
+    }
+
+    // Dynamic Shiba Companion Active Skill & Charge
+    if (this.shibaPowerActiveTimer > 0) {
+      this.shibaPowerActiveTimer = Math.max(0, this.shibaPowerActiveTimer - dt);
+      if (this.shibaPowerActiveTimer === 0) {
+        this.shibaCoinMultFactor = 1;
+        this.shiba.setPowerAuraActive(false);
+      }
+    } else {
+      this.shibaPowerCharge = Math.min(
+        shibaSpec.chargeCostSec,
+        this.shibaPowerCharge + dt * hasteFactor,
       );
     }
 
@@ -746,6 +963,15 @@ export class AnimeRushEngine {
     const deltaZ = this.worldSpeed * dt;
     this.runnerZ -= deltaZ;
     this.distance += deltaZ;
+    if (this.carRemaining > 0) {
+      this.carDistance += deltaZ;
+    }
+    if (this.tutorialStep !== null && this.distance >= 95) {
+      this.tutorialStep = null;
+      this.tutorialEnabled = false;
+      saveTutorialDone(true);
+    }
+    this.sound.setBgmState(true, this.worldSpeed / GAME_CONSTANTS.BASE_SPEED, this.carRemaining > 0);
 
     const targetX = this.targetLane * GAME_CONSTANTS.LANE_WIDTH;
     const prevX = this.runnerX;
@@ -808,6 +1034,9 @@ export class AnimeRushEngine {
       this.velocityY -= gravity * dt;
       this.runnerY += this.velocityY * dt;
       if (this.runnerY <= supportFloorY) {
+        if (supportFloorY > 0.5) {
+          this.trainJumps++;
+        }
         this.runnerY = supportFloorY;
         this.velocityY = 0;
         this.isGrounded = true;
@@ -857,6 +1086,8 @@ export class AnimeRushEngine {
 
     this.environment.update(dt, this.runnerZ, this.worldSpeed);
     const magnetPullOn = this.magnetTimer > 0 || isCarActive;
+    const currentFuelPct = Math.round((this.fuelUnits / GAME_CONSTANTS.FUEL_MAX_UNITS) * 100);
+    const activeRushMask = (this.baseRushMask | this.runRushMaskEarned) & 0x0f;
     const poolFrame = this.pools.update(
       dt,
       this.runnerZ,
@@ -864,41 +1095,76 @@ export class AnimeRushEngine {
       this.runnerX,
       this.runnerY,
       magnetPullOn,
+      {
+        fuelPct: currentFuelPct,
+        carActive: isCarActive,
+        hasShield: this.hasShield,
+        magnetActive: this.magnetTimer > 0,
+      },
+      activeRushMask,
     );
     if (poolFrame.passedMovingTrain) {
       this.sound.playTrainPass();
+    }
+    if (poolFrame.crossedRecordGate) {
+      this.recordGateMeters = null;
+      this.sound.playRecordBreak();
+      this.triggerHaptic('medium');
+      this.milestoneLabel = 'BORNE TON RECORD FRANCHIE !';
+      this.milestoneTimer = 2.0;
     }
 
     const isActivelySliding = this.slideTimer > 0 && this.isGrounded && !isCarActive;
     const isChangingLane = Math.abs(this.runnerX - targetX) > 0.18;
     const canTakeBump = this.staminaLife >= 2 && this.bumpInvulnTimer <= 0;
 
-    const { hitKind, coinsCollected, sakuraCollected, fuelCollected, pickedPowerup, nearMisses } =
-      this.pools.checkCollisions(
-        this.runnerX,
-        this.runnerY,
-        isActivelySliding,
-        this.runnerZ,
-        isChangingLane,
-        canTakeBump,
-        this.bumpInvulnTimer > 0,
-      );
+    const {
+      hitKind,
+      coinsCollected,
+      sakuraCollected,
+      fuelCollected,
+      pickedPowerup,
+      nearMisses,
+      rushMaskCollected,
+    } = this.pools.checkCollisions(
+      this.runnerX,
+      this.runnerY,
+      isActivelySliding,
+      this.runnerZ,
+      isChangingLane,
+      canTakeBump,
+      this.bumpInvulnTimer > 0,
+    );
 
     if (coinsCollected > 0) {
       const carCoinRate = isCarActive ? this.equippedCar.coinBonusRate : 0;
       const coinBonusRate =
-        (passive.passiveType === 'COIN_BONUS' ? passive.passiveValue : 0) + carCoinRate;
-      this.coinBonusAccumulator += coinsCollected * coinBonusRate;
+        (passive.passiveType === 'COIN_BONUS' ? passive.passiveValue : 0) +
+        (shibaSpec.passiveType === 'COIN_BONUS' ? shibaSpec.passiveValue : 0) +
+        carCoinRate;
+      const multipliedCoins = coinsCollected * this.shibaCoinMultFactor;
+      this.coinBonusAccumulator += multipliedCoins * coinBonusRate;
       const bonusWhole = Math.floor(this.coinBonusAccumulator);
       this.coinBonusAccumulator -= bonusWhole;
-      this.coins += coinsCollected + bonusWhole;
+      this.coins += multipliedCoins + bonusWhole;
       if (this.heroPowerActiveTimer <= 0) {
         this.heroPowerCharge = Math.min(
           passive.chargeCostSec,
           this.heroPowerCharge + coinsCollected * 0.55 * hasteFactor,
         );
       }
+      if (this.shibaPowerActiveTimer <= 0) {
+        this.shibaPowerCharge = Math.min(
+          shibaSpec.chargeCostSec,
+          this.shibaPowerCharge + coinsCollected * 0.45 * hasteFactor,
+        );
+      }
       this.sound.playCoin();
+      if (!this.runCoinGoalAnnounced && this.coins >= 500) {
+        this.runCoinGoalAnnounced = true;
+        this.milestoneLabel = 'OBJECTIF ACCOMPLI : 500 PIÈCES !';
+        this.milestoneTimer = 1.9;
+      }
     }
 
     if (sakuraCollected > 0) {
@@ -907,9 +1173,30 @@ export class AnimeRushEngine {
       this.triggerHaptic('light');
     }
 
+    if (rushMaskCollected > 0) {
+      this.runRushMaskEarned |= rushMaskCollected;
+      const combinedMask = (this.baseRushMask | this.runRushMaskEarned) & 0x0f;
+      if (!this.rushCompletedThisRun && combinedMask === 0x0f) {
+        this.rushCompletedThisRun = true;
+        this.baseRushMask = 0;
+        this.sound.playWordComplete();
+        this.triggerHaptic('medium');
+        this.milestoneLabel = 'MOT R-U-S-H COMPLÉTÉ ! +400 PIÈCES & +25 GEMMES';
+        this.milestoneTimer = 2.4;
+        this.onRushWordCompleted?.();
+      } else {
+        this.sound.playLetterCollect();
+        this.triggerHaptic('light');
+        this.milestoneLabel = 'LETTRE R-U-S-H COLLECTÉE !';
+        this.milestoneTimer = 1.25;
+      }
+    }
+
     if (fuelCollected > 0) {
       const fuelBonus =
-        passive.passiveType === 'FUEL_EFFICIENCY' ? 1 + passive.passiveValue : 1;
+        1 +
+        (passive.passiveType === 'FUEL_EFFICIENCY' ? passive.passiveValue : 0) +
+        (shibaSpec.passiveType === 'FUEL_EFFICIENCY' ? shibaSpec.passiveValue : 0);
       const addedFuel = Math.round(
         fuelCollected * GAME_CONSTANTS.FUEL_CAN_UNITS * fuelBonus,
       );
@@ -924,17 +1211,41 @@ export class AnimeRushEngine {
       }
     }
 
+    if (this.nearMissComboTimer > 0) {
+      this.nearMissComboTimer = Math.max(0, this.nearMissComboTimer - dt);
+      if (this.nearMissComboTimer === 0) {
+        this.nearMissCombo = 0;
+      }
+    }
+
     if (nearMisses > 0) {
       this.nearMissCount += nearMisses;
-      this.nearMissBonusScore += nearMisses * 150;
+      const comboRes = computeNearMissCombo(
+        this.nearMissCombo,
+        this.nearMissComboTimer,
+        nearMisses,
+      );
+      this.nearMissCombo = comboRes.nextCombo;
+      this.nearMissComboTimer = comboRes.nextTimerSec;
+      this.nearMissBonusScore += comboRes.addedBonusScore;
+
       if (this.heroPowerActiveTimer <= 0) {
         this.heroPowerCharge = Math.min(
           passive.chargeCostSec,
-          this.heroPowerCharge + passive.chargeCostSec * 0.1 * nearMisses,
+          this.heroPowerCharge + passive.chargeCostSec * comboRes.extraChargeRatio,
         );
       }
-      this.nearMissLabel = `FRÔLEMENT ! +${nearMisses * 150} PTS · +10% POUVOIR`;
-      this.nearMissTimer = 1.3;
+      if (this.shibaPowerActiveTimer <= 0) {
+        this.shibaPowerCharge = Math.min(
+          shibaSpec.chargeCostSec,
+          this.shibaPowerCharge + shibaSpec.chargeCostSec * comboRes.extraChargeRatio,
+        );
+      }
+      this.nearMissLabel =
+        comboRes.nextCombo > 1
+          ? `FRÔLEMENT ×${comboRes.nextCombo} ! +${comboRes.addedBonusScore} PTS`
+          : `FRÔLEMENT ! +${comboRes.addedBonusScore} PTS · +8% POUVOIR`;
+      this.nearMissTimer = 1.45;
       this.sound.playNearMiss();
       this.triggerHaptic('light');
     }
@@ -948,6 +1259,7 @@ export class AnimeRushEngine {
 
     const magDurBonus =
       (passive.passiveType === 'MAGNET_DURATION' ? passive.passiveValue : 0) +
+      (shibaSpec.passiveType === 'MAGNET_DURATION' ? shibaSpec.passiveValue : 0) +
       (this.upgradeLevels.magnet - 1) * 2.5;
     if (pickedPowerup === 'MAGNET') {
       this.magnetTimer = Math.max(this.magnetTimer, 11.0 + magDurBonus);
@@ -967,7 +1279,9 @@ export class AnimeRushEngine {
     const carScoreBonus = isCarActive ? this.equippedCar.scoreBonusRate : 0;
     const upgradeScoreBonus = (this.upgradeLevels.score - 1) * 0.12;
     const scorePassiveBonus =
-      (passive.passiveType === 'SCORE_BOOST' ? 1 + passive.passiveValue : 1) +
+      1 +
+      (passive.passiveType === 'SCORE_BOOST' ? passive.passiveValue : 0) +
+      (shibaSpec.passiveType === 'SCORE_BOOST' ? shibaSpec.passiveValue : 0) +
       carScoreBonus +
       upgradeScoreBonus;
     const effectiveMultiplier = this.scoreMultiplier * this.overdriveMultFactor;
@@ -990,7 +1304,7 @@ export class AnimeRushEngine {
       }
     }
     if (this.distance >= this.nextMilestoneMeters) {
-      this.milestoneLabel = `${this.nextMilestoneMeters} m !`;
+      this.milestoneLabel = `OBJECTIF ${this.nextMilestoneMeters} m ACCOMPLI !`;
       this.milestoneTimer = 1.6;
       this.nextMilestoneMeters += 250;
     }
@@ -1047,6 +1361,8 @@ export class AnimeRushEngine {
       sakuraCollected > 0 ||
       fuelCollected > 0 ||
       nearMisses > 0 ||
+      rushMaskCollected > 0 ||
+      poolFrame.crossedRecordGate ||
       pickedPowerup ||
       staminaChanged ||
       this.hudSyncAccumulator >= 0.05
@@ -1152,10 +1468,31 @@ export class AnimeRushEngine {
       this.runnerZ - 9.5,
     );
     this.camera.rotation.z = THREE.MathUtils.clamp(-lateralDelta * 0.004, -0.04, 0.04);
+
+    // Dynamic FOV expansion during Car Turbo, HeadStart, Sprint or high speed
+    const speedRatio = THREE.MathUtils.clamp(
+      (this.worldSpeed - GAME_CONSTANTS.BASE_SPEED) /
+        (GAME_CONSTANTS.MAX_SPEED - GAME_CONSTANTS.BASE_SPEED),
+      0,
+      1,
+    );
+    const fovBoost =
+      this.carRemaining > 0
+        ? 8.5
+        : this.headStartTimer > 0 || this.invincibleSprintTimer > 0
+          ? 7.0
+          : speedRatio * 5.0;
+    const targetFov = this.baseCameraFov + fovBoost;
+    const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, 1 - Math.exp(-5.0 * dt));
+    if (Math.abs(nextFov - this.camera.fov) > 0.04) {
+      this.camera.fov = nextFov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   private triggerGameOver(): void {
     this.phase = 'GAME_OVER';
+    this.sound.setBgmState(false);
     this.car.setVisible(false);
     this.carRemaining = 0;
     this.hitstopTimer = 0.06;
@@ -1174,11 +1511,17 @@ export class AnimeRushEngine {
       consumedShield: this.consumedShield,
       consumedMultiplier: this.consumedMultiplier,
       consumedHeadStart: this.consumedHeadStart,
+      nearMisses: this.nearMissCount,
+      shibaActivations: this.shibaActivations,
+      carDistance: Math.floor(this.carDistance),
+      trainJumps: this.trainJumps,
+      rushLettersMaskEarned: this.runRushMaskEarned,
     });
   }
 
   private emitHud(): void {
     const spec = this.equippedHero.power;
+    const shibaSpec = this.equippedCompanion.power;
     const fuelPct = Math.round(
       THREE.MathUtils.clamp(
         (this.fuelUnits / GAME_CONSTANTS.FUEL_MAX_UNITS) * 100,
@@ -1189,6 +1532,20 @@ export class AnimeRushEngine {
     const chargePct = Math.round(
       THREE.MathUtils.clamp((this.heroPowerCharge / spec.chargeCostSec) * 100, 0, 100),
     );
+    const shibaChargePct = Math.round(
+      THREE.MathUtils.clamp((this.shibaPowerCharge / shibaSpec.chargeCostSec) * 100, 0, 100),
+    );
+
+    const speedLinesIntensity =
+      this.phase === 'PLAYING'
+        ? THREE.MathUtils.clamp(
+            this.carRemaining > 0 || this.headStartTimer > 0 || this.invincibleSprintTimer > 0
+              ? 1
+              : (this.worldSpeed - 20) / 13,
+            0,
+            1,
+          )
+        : 0;
 
     this.onHudChange({
       phase: this.phase,
@@ -1222,8 +1579,22 @@ export class AnimeRushEngine {
         this.heroPowerCharge >= spec.chargeCostSec && this.heroPowerActiveTimer <= 0,
       heroPowerActiveRemaining: Math.ceil(this.heroPowerActiveTimer),
       heroPassiveSummary: spec.passiveLabel,
+      shibaName: this.equippedCompanion.name,
+      shibaPowerName: shibaSpec.activeName,
+      shibaPowerAccent: this.equippedCompanion.uiAccent,
+      shibaPowerChargePct: shibaChargePct,
+      shibaPowerReady:
+        this.shibaPowerCharge >= shibaSpec.chargeCostSec && this.shibaPowerActiveTimer <= 0,
+      shibaPowerActiveRemaining: Math.ceil(this.shibaPowerActiveTimer),
+      shibaCoinX2Active: this.shibaCoinMultFactor > 1 && this.shibaPowerActiveTimer > 0,
       nearMissCount: this.nearMissCount,
+      nearMissCombo: this.nearMissCombo,
+      nearMissComboTimer: Number(this.nearMissComboTimer.toFixed(1)),
       nearMissLabel: this.nearMissLabel,
+      rushLettersMask: (this.baseRushMask | this.runRushMaskEarned) & 0x0f,
+      speedLinesIntensity,
+      tutorialStep: this.phase === 'PLAYING' && this.distance >= 2 ? this.tutorialStep : null,
+      recordGateMeters: this.recordGateMeters,
       biomeName: this.currentBiomeName,
       canRevive: !this.revivedUsed,
       revivedUsed: this.revivedUsed,

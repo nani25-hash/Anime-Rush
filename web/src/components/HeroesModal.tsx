@@ -23,6 +23,7 @@ import {
 } from './Icons';
 
 interface HeroesModalProps {
+  initialSubTab?: ShowroomTab;
   profile: PlayerProfile;
   onEquip: (heroId: string, companionId: string) => void;
   onEquipCar: (carId: string) => void;
@@ -69,6 +70,7 @@ const HERO_FILTERS: HeroFilter[] = [
 ];
 
 export const HeroesModal: React.FC<HeroesModalProps> = ({
+  initialSubTab = 'heroes',
   profile,
   onEquip,
   onEquipCar,
@@ -76,7 +78,7 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
   onPurchaseUpgrade,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<ShowroomTab>('heroes');
+  const [subTab, setSubTab] = useState<ShowroomTab>(initialSubTab);
   const [previewHeroId, setPreviewHeroId] = useState<string>(profile.equippedHeroId);
   const [previewCarId, setPreviewCarId] = useState<string>(profile.equippedCarId);
   const [previewCompId, setPreviewCompId] = useState<string>(profile.equippedCompanionId);
@@ -88,6 +90,10 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
   const stageRef = useRef<PreviewStage3D | null>(null);
 
   useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -96,7 +102,7 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
       stage = new PreviewStage3D(
         canvas,
         {
-          mode: 'heroes',
+          mode: initialSubTab === 'upgrades' ? 'heroes' : initialSubTab,
           heroId: previewHeroId,
           carId: previewCarId,
           companionId: previewCompId,
@@ -165,6 +171,16 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
         c.name.toLowerCase().includes(normalizedQuery) ||
         c.subtitle.toLowerCase().includes(normalizedQuery) ||
         c.perkLabel.toLowerCase().includes(normalizedQuery),
+    );
+  }, [normalizedQuery]);
+
+  const filteredCompanions = useMemo(() => {
+    if (!normalizedQuery) return COMPANION_CATALOG;
+    return COMPANION_CATALOG.filter(
+      (comp) =>
+        comp.name.toLowerCase().includes(normalizedQuery) ||
+        comp.title.toLowerCase().includes(normalizedQuery) ||
+        comp.power.activeName.toLowerCase().includes(normalizedQuery),
     );
   }, [normalizedQuery]);
 
@@ -244,8 +260,8 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
       unlocked,
       equipped,
       affordable,
-      pillOne: selectedComp.bonusLabel,
-      pillTwo: selectedComp.description,
+      pillOne: selectedComp.power.passiveLabel,
+      pillTwo: `${selectedComp.power.activeName} : ${selectedComp.power.activeDescription}`,
     };
   }, [
     subTab,
@@ -305,8 +321,11 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
           </div>
         </header>
 
-        {/* Upper Interactive 3D Brick Showroom (kept mounted, hidden when on Upgrades tab) */}
-        <section className={`showroom-stage ${subTab === 'upgrades' ? 'is-hidden' : ''}`}>
+        {/* Upper Interactive 3D Neo-Tokyo Cyber-Hangar (kept mounted, hidden when on Upgrades tab) */}
+        <section
+          className={`showroom-stage ${subTab === 'upgrades' ? 'is-hidden' : ''}`}
+          style={{ '--showroom-accent': activeItemState.accent } as React.CSSProperties}
+        >
           <div className="showroom-title-block">
             <div className="showroom-name-row">
               <h2 className="showroom-item-title">{activeItemState.name}</h2>
@@ -379,20 +398,22 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
         <section
           className={`showroom-controls-bar ${subTab === 'upgrades' ? 'is-hidden' : ''}`}
         >
-          {subTab !== 'companions' ? (
-            <div className="showroom-search-row">
-              <input
-                type="search"
-                className="showroom-search-input"
-                placeholder={
-                  subTab === 'heroes' ? 'Rechercher un héros...' : 'Rechercher une voiture...'
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="Rechercher"
-              />
-            </div>
-          ) : null}
+          <div className="showroom-search-row">
+            <input
+              type="search"
+              className="showroom-search-input"
+              placeholder={
+                subTab === 'heroes'
+                  ? 'Rechercher un héros...'
+                  : subTab === 'cars'
+                    ? 'Rechercher une voiture...'
+                    : 'Rechercher un Shiba ou pouvoir...'
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Rechercher"
+            />
+          </div>
 
           {subTab === 'heroes' && (
             <div className="showroom-filter-strip">
@@ -513,7 +534,7 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
 
           {subTab === 'companions' && (
             <div className="portrait-grid">
-              {COMPANION_CATALOG.map((comp) => {
+              {filteredCompanions.map((comp) => {
                 const unlocked = profile.unlockedCompanionIds.includes(comp.id);
                 const equipped = profile.equippedCompanionId === comp.id;
                 const selected = previewCompId === comp.id;
@@ -553,6 +574,9 @@ export const HeroesModal: React.FC<HeroesModalProps> = ({
                   </button>
                 );
               })}
+              {filteredCompanions.length === 0 && (
+                <div className="showroom-empty">Aucun Shiba trouvé pour cette recherche.</div>
+              )}
             </div>
           )}
           {subTab === 'upgrades' && (

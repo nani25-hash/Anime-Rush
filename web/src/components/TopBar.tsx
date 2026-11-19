@@ -1,62 +1,28 @@
 import React from 'react';
-import { getHeroById } from '../config/catalog';
 import { PlayerProfile } from '../types/game';
-import { CoinIcon, GemIcon, MenuIcon } from './Icons';
+import { BoltIcon, CoinIcon, GearIcon, GemIcon, PlusIcon } from './Icons';
 
 interface TopBarProps {
   profile: PlayerProfile;
+  displayMultiplier: number;
+  onOpenShop: () => void;
+  onOpenBoosts: () => void;
   onOpenSettings: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ profile, onOpenSettings }) => {
-  const hero = getHeroById(profile.equippedHeroId);
-  const xpPct = Math.min(
-    100,
-    Math.max(4, Math.round((profile.xp / Math.max(1, profile.xpToNextLevel)) * 100)),
-  );
-
+export const TopBar: React.FC<TopBarProps> = ({
+  profile,
+  displayMultiplier,
+  onOpenShop,
+  onOpenBoosts,
+  onOpenSettings,
+}) => {
   return (
     <header className="lobby-topbar interactive">
-      {/* Profile Lv / Pseudo / XP Card */}
-      <button
-        type="button"
-        className="profile-chip"
-        onClick={onOpenSettings}
-        aria-label="Profil et paramètres du joueur"
-        data-testid="profile-chip"
-      >
+      {/* Left Cluster: Neo-Tokyo Currency Dock */}
+      <div className="ar-currency-dock">
         <div
-          className="profile-avatar"
-          style={{
-            borderColor: hero.uiAccent,
-            background: `linear-gradient(135deg, ${hero.uiAccent}33, #0f172a)`,
-          }}
-        >
-          <span className="profile-kanji">{hero.kanji}</span>
-        </div>
-        <div className="profile-meta">
-          <div className="profile-name-row">
-            <span className="profile-lv tabular">Lv.{profile.level}</span>
-            <span className="profile-name">{profile.displayName}</span>
-          </div>
-          <div className="profile-xp-bar" title={`${profile.xp} / ${profile.xpToNextLevel} XP`}>
-            <div className="profile-xp-fill" style={{ width: `${xpPct}%` }} />
-            <span className="profile-xp-text tabular">
-              XP {profile.xp.toLocaleString('fr-FR')} / {profile.xpToNextLevel.toLocaleString('fr-FR')}
-            </span>
-          </div>
-        </div>
-      </button>
-
-      {/* Currencies (Coins + Gems display) & Menu Button */}
-      <div className="topbar-currencies">
-        <div className="currency-pill" aria-label={`Pièces : ${profile.coins}`} data-testid="coins-pill">
-          <CoinIcon size={17} />
-          <span className="tabular">{profile.coins.toLocaleString('fr-FR')}</span>
-        </div>
-
-        <div
-          className="currency-pill currency-gems"
+          className="ar-currency-cell"
           aria-label={`Gemmes : ${profile.gems}`}
           data-testid="gems-pill"
         >
@@ -64,14 +30,49 @@ export const TopBar: React.FC<TopBarProps> = ({ profile, onOpenSettings }) => {
           <span className="tabular">{profile.gems.toLocaleString('fr-FR')}</span>
         </div>
 
+        <span className="ar-currency-sep" aria-hidden="true" />
+
+        <div
+          className="ar-currency-cell"
+          aria-label={`Pièces : ${profile.coins}`}
+          data-testid="coins-pill"
+        >
+          <CoinIcon size={17} />
+          <span className="tabular">{profile.coins.toLocaleString('fr-FR')}</span>
+        </div>
+
         <button
           type="button"
-          className="topbar-menu-btn"
-          onClick={onOpenSettings}
-          aria-label="Menu et paramètres"
-          data-testid="settings-button"
+          className="ar-plus-btn"
+          onClick={onOpenShop}
+          aria-label="Ouvrir la boutique"
+          data-testid="topbar-shop-plus"
         >
-          <MenuIcon size={20} />
+          <PlusIcon size={14} />
+        </button>
+      </div>
+
+      {/* Right Cluster: Skewed Anime Rank Multiplier + Hexagonal Gear */}
+      <div className="ar-topbar-right">
+        <button
+          type="button"
+          className={`ar-mult-tag ${displayMultiplier > 1 ? 'boosted' : ''}`}
+          onClick={onOpenBoosts}
+          aria-label={`Multiplicateur x${displayMultiplier}`}
+          data-testid="multiplier-card"
+        >
+          <BoltIcon size={15} />
+          <span className="ar-mult-val tabular">×{displayMultiplier}</span>
+        </button>
+
+        <button
+          type="button"
+          className="ar-gear-btn"
+          onClick={onOpenSettings}
+          aria-label="Profil, niveau et paramètres"
+          data-testid="topbar-settings-btn"
+        >
+          <GearIcon size={21} />
         </button>
       </div>
     </header>

@@ -174,3 +174,114 @@ export function isNearMissDodge(
   }
   return false;
 }
+
+export const SPAWN_THRESHOLDS = {
+  OBSTACLE_START_Z: 45,
+  FUEL_MIN_DIST: 60,
+  FUEL_COOLDOWN_DIST: 24,
+  TRAIN_MIN_DIST: 95,
+  TRAIN_COOLDOWN_DIST: 22,
+  SAKURA_MIN_DIST: 110,
+  SAKURA_COOLDOWN_DIST: 34,
+  RAMP_TRAIN_MIN_DIST: 120,
+  MAGNET_MIN_DIST: 150,
+  MAGNET_COOLDOWN_DIST: 55,
+  WALL_GATE_MIN_DIST: 160,
+  WALL_GATE_COOLDOWN_DIST: 56,
+  SHIELD_MIN_DIST: 210,
+  SHIELD_COOLDOWN_DIST: 68,
+  DOUBLE_TRAIN_MIN_DIST: 220,
+} as const;
+
+export type CollectibleSpawnKind = 'FUEL' | 'SAKURA' | 'MAGNET' | 'SHIELD';
+
+export interface SpawnContext {
+  fuelPct: number;
+  carActive: boolean;
+  hasShield: boolean;
+  magnetActive: boolean;
+}
+
+/**
+ * Enforces minimum distance thresholds, cooldown spacing, and contextual coherence
+ * so power-ups and collectibles never spawn prematurely or redundantly.
+ */
+export function shouldSpawnCollectibleAtDistance(
+  kind: CollectibleSpawnKind,
+  absZ: number,
+  lastSpawnAbsZ: number,
+  ctx: SpawnContext,
+): boolean {
+  if (absZ < SPAWN_THRESHOLDS.OBSTACLE_START_Z) return false;
+
+  switch (kind) {
+    case 'FUEL':
+      if (ctx.carActive || ctx.fuelPct >= 100) return false;
+      return (
+        absZ >= SPAWN_THRESHOLDS.FUEL_MIN_DIST &&
+        absZ - lastSpawnAbsZ >= SPAWN_THRESHOLDS.FUEL_COOLDOWN_DIST
+      );
+    case 'SAKURA':
+      return (
+        absZ >= SPAWN_THRESHOLDS.SAKURA_MIN_DIST &&
+        absZ - lastSpawnAbsZ >= SPAWN_THRESHOLDS.SAKURA_COOLDOWN_DIST
+      );
+    case 'MAGNET':
+      if (ctx.magnetActive) return false;
+      return (
+        absZ >= SPAWN_THRESHOLDS.MAGNET_MIN_DIST &&
+        absZ - lastSpawnAbsZ >= SPAWN_THRESHOLDS.MAGNET_COOLDOWN_DIST
+      );
+    case 'SHIELD':
+      if (ctx.hasShield) return false;
+      return (
+        absZ >= SPAWN_THRESHOLDS.SHIELD_MIN_DIST &&
+        absZ - lastSpawnAbsZ >= SPAWN_THRESHOLDS.SHIELD_COOLDOWN_DIST
+      );
+  }
+}
+
+export const RUSH_LETTERS = ['R', 'U', 'S', 'H'] as const;
+export type RushLetter = (typeof RUSH_LETTERS)[number];
+
+export const RUSH_LETTER_BITS: Record<RushLetter, number> = {
+  R: 1,
+  U: 2,
+  S: 4,
+  H: 8,
+};
+
+export function getMissingRushLetters(mask: number): RushLetter[] {
+  return RUSH_LETTERS.filter((letter) => (mask & RUSH_LETTER_BITS[letter]) === 0);
+}
+
+export interface NearMissComboResult {
+  nextCombo: number;
+  nextTimerSec: number;
+  addedBonusScore: number;
+  extraChargeRatio: number;
+}
+
+export function computeNearMissCombo(
+  currentCombo: number,
+  comboRemainingSec: number,
+  addedNearMisses: number,
+): NearMissComboResult {
+  if (addedNearMisses <= 0) {
+    return {
+      nextCombo: comboRemainingSec > 0 ? currentCombo : 0,
+      nextTimerSec: Math.max(0, comboRemainingSec),
+      addedBonusScore: 0,
+      extraChargeRatio: 0,
+    };
+  }
+  const baseCombo = comboRemainingSec > 0 ? currentCombo : 0;
+  const nextCombo = Math.min(8, baseCombo + addedNearMisses);
+  return {
+    nextCombo,
+    nextTimerSec: 3.8,
+    addedBonusScore: 150 * nextCombo * addedNearMisses,
+    extraChargeRatio: Math.min(0.25, 0.08 * nextCombo) * addedNearMisses,
+  };
+}
+

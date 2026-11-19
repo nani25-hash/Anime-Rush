@@ -10,6 +10,8 @@ export class ShibaCompanion {
   private readonly legs: THREE.Group[] = [];
   private readonly scarfTails: THREE.Mesh[] = [];
   private readonly shadowMesh: THREE.Mesh;
+  private readonly powerAuraMesh: THREE.Mesh;
+  private readonly powerAuraMat: THREE.MeshBasicMaterial;
 
   private readonly coatMat: THREE.MeshStandardMaterial;
   private readonly creamMat: THREE.MeshStandardMaterial;
@@ -19,6 +21,7 @@ export class ShibaCompanion {
   private runPhase = 0.8;
   private currentX = 1.05;
   private currentY = 0;
+  private powerAuraActive = false;
 
   constructor(shadowTexture: THREE.Texture, initialCompanionId = 'shiba_classic') {
     const skin = getCompanionById(initialCompanionId);
@@ -216,6 +219,19 @@ export class ShibaCompanion {
     this.shadowMesh.rotation.x = -Math.PI / 2;
     this.shadowMesh.position.y = 0.03;
     this.root.add(this.shadowMesh);
+
+    const auraGeo = new THREE.TorusGeometry(0.46, 0.045, 8, 24);
+    this.powerAuraMat = new THREE.MeshBasicMaterial({
+      color: 0xfacc15,
+      transparent: true,
+      opacity: 0.88,
+    });
+    this.powerAuraMesh = new THREE.Mesh(auraGeo, this.powerAuraMat);
+    this.powerAuraMesh.rotation.x = Math.PI / 2;
+    this.powerAuraMesh.position.y = 0.24;
+    this.powerAuraMesh.visible = false;
+    this.disposables.push(auraGeo, this.powerAuraMat);
+    this.root.add(this.powerAuraMesh);
   }
 
   public setSkin(companionId: string): void {
@@ -223,6 +239,12 @@ export class ShibaCompanion {
     this.coatMat.color.setHex(skin.coatHex);
     this.creamMat.color.setHex(skin.creamHex);
     this.bandanaMat.color.setHex(skin.bandanaHex);
+  }
+
+  public setPowerAuraActive(active: boolean, colorHex = 0xfacc15): void {
+    this.powerAuraActive = active;
+    this.powerAuraMesh.visible = active;
+    this.powerAuraMat.color.setHex(colorHex);
   }
 
   public reset(x = 1.0, z = 0): void {
@@ -306,6 +328,13 @@ export class ShibaCompanion {
       const rib = this.scarfTails[i];
       rib.rotation.x = 0.25 + Math.sin(waveTime + i) * 0.22;
       rib.rotation.y = (i === 0 ? -0.35 : 0.35) + Math.cos(waveTime + i) * 0.14;
+    }
+
+    if (this.powerAuraActive) {
+      const pulse = 1 + Math.sin(waveTime * 0.9) * 0.12;
+      this.powerAuraMesh.scale.set(pulse, pulse, 1);
+      this.powerAuraMesh.rotation.z += dt * 4.2;
+      this.powerAuraMat.opacity = 0.65 + Math.sin(waveTime * 1.1) * 0.25;
     }
   }
 

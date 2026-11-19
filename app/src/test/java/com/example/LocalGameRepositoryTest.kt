@@ -163,4 +163,99 @@ class LocalGameRepositoryTest {
     val revived = repository.spendGemsForRevive(15L).getOrThrow()
     assertEquals(25L, revived.gems)
   }
+
+  @Test
+  fun `caps seasonLevel at 10 and self-heals out-of-range persisted season tiers`() = runTest {
+    repository.ensurePlayerInitialized().getOrThrow()
+
+    repeat(15) {
+      repository.recordRunResult(
+        score = 15000L,
+        distance = 2000L,
+        coinsEarned = 300L,
+        sakuraTokensEarned = 10L,
+        jumps = 20L,
+        slides = 15L,
+      ).getOrThrow()
+    }
+
+    val afterHeavyRuns = repository.getCurrentProfile().getOrThrow()
+    assertEquals(LocalGameRepository.MAX_SEASON_TIER, afterHeavyRuns.seasonLevel)
+    assertTrue(afterHeavyRuns.seasonXp <= 100L)
+
+    // Simulate legacy out-of-range row (e.g. 14 / 10) and verify normalization heals it
+    val currentEntity = db.localGameDao().getProfile()!!
+    db.localGameDao().upsertProfile(currentEntity.copy(seasonLevel = 14L, seasonXp = 420L))
+
+    val healed = repository.ensurePlayerInitialized().getOrThrow()
+    assertEquals(LocalGameRepository.MAX_SEASON_TIER, healed.seasonLevel)
+    assertEquals(100L, healed.seasonXp)
+  }
+
+  @Test
+  fun `tracks and claims new daily and weekly missions and RUSH word completion`() = runTest {
+    repository.ensurePlayerInitialized().getOrThrow()
+
+    val afterRun =
+      repository.recordRunResult(
+        score = 8500L,
+        distance = 900L,
+        coinsEarned = 200L,
+        sakuraTokensEarned = 4L,
+        jumps = 25L,
+        slides = 10L,
+        nearMisses = 8L,
+        shibaActivations = 3L,
+        carDistance = 1250L,
+        trainJumps = 12L,
+        rushLettersMaskEarned = 0x0F,
+      ).getOrThrow()
+
+    assertEquals(8L, afterRun.dailyNearMisses)
+    assertEquals(3L, afterRun.dailyShibaUses)
+    assertEquals(1250L, afterRun.weeklyCarDistance)
+    assertEquals(12L, afterRun.weeklyTrainJumps)
+    assertEquals(0x0F, afterRun.rushLettersMask)
+
+    val claimedNearMiss = repository.claimMission("daily_nearmiss").getOrThrow()
+    assertTrue(claimedNearMiss.dailyNearMissesClaimed)
+
+    val claimedShiba = repository.claimMission("daily_shiba").getOrThrow()
+    assertTrue(claimedShiba.dailyShibaUsesClaimed)
+
+    val claimedCarDist = repository.claimMission("weekly_car_dist").getOrThrow()
+    assertTrue(claimedCarDist.weeklyCarDistanceClaimed)
+
+    val claimedTrainJumps = repository.claimMission("weekly_train_jumps").getOrThrow()
+    assertTrue(claimedTrainJumps.weeklyTrainJumpsClaimed)
+
+    val rushWord = repository.claimRushWordBonus().getOrThrow()
+    assertEquals(400L, rushWord.coins)
+    assertEquals(25L, rushWord.gems)
+    assertEquals(100L, rushWord.seasonXp)
+    assertEquals(1L, rushWord.wordsCompleted)
+
+    val afterWord = repository.getCurrentProfile().getOrThrow()
+    assertEquals(0, afterWord.rushLettersMask)
+    assertEquals(1L, afterWord.rushWordsCompleted)
+  }
+
+  @Test
+  fun `claims 7-day daily login reward once per day and supports Dojo capsule draws`() = runTest {
+    repository.ensurePlayerInitialized().getOrThrow()
+    repository.claimAllInbox().getOrThrow()
+
+    val day1 = repository.claimDailyLogin().getOrThrow()
+    assertEquals(1, day1.day)
+    assertEquals(400L, day1.coins)
+
+    val doubleClaim = repository.claimDailyLogin()
+    assertTrue(doubleClaim.isFailure)
+
+    val capsuleOutcome = repository.drawDojoCapsule("coins").getOrThrow()
+    assertTrue(capsuleOutcome.title.isNotEmpty())
+
+    val afterCapsule = repository.getCurrentProfile().getOrThrow()
+    assertEquals(1L, afterCapsule.gachaDraws)
+  }
 }

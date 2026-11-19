@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BottomNavBar } from './components/BottomNavBar';
+import { DailyLoginModal } from './components/DailyLoginModal';
 import { FreeChestModal } from './components/FreeChestModal';
 import { GameHud } from './components/GameHud';
 import { GameOverModal } from './components/GameOverModal';
@@ -13,33 +14,60 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShopModal } from './components/ShopModal';
 import { SocialHubModal } from './components/SocialHubModal';
 import { TopBar } from './components/TopBar';
-import { CAR_CATALOG, HERO_CATALOG } from './config/catalog';
+import {
+  ACHIEVEMENTS_CATALOG,
+  CAR_CATALOG,
+  COMPANION_CATALOG,
+  HERO_CATALOG,
+  MISSIONS_CATALOG,
+  SEASON_TIERS,
+} from './config/catalog';
 import { AnimeRushEngine } from './game/AnimeRushEngine';
+import { warmupEquippedThumbnails } from './game/PreviewStage3D';
 import { useGameProfile } from './state/useGameProfile';
 import {
   ActiveModal,
   BottomTab,
+  FpsLimit,
   GAME_CONSTANTS,
   HudSnapshot,
   QualityLevel,
   RunTelemetry,
   loadBestScore,
+  loadMusicVolume,
+  loadSavedFpsLimit,
   loadSavedHaptics,
   loadSavedMuted,
   loadSavedQuality,
+  loadSfxVolume,
+  saveFpsLimit,
   saveHaptics,
+  saveMusicVolume,
   saveMuted,
   saveQuality,
+  saveSfxVolume,
+  saveTutorialDone,
 } from './types/game';
 
 export const App: React.FC = () => {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<AnimeRushEngine | null>(null);
-  const { profile, social, chestReward, toastMessage, selectedBoosts, actions } =
-    useGameProfile();
+  const {
+    profile,
+    social,
+    chestReward,
+    loginReward,
+    gachaResult,
+    toastMessage,
+    selectedBoosts,
+    actions,
+  } = useGameProfile();
 
   const [quality, setQuality] = useState<QualityLevel>(() => loadSavedQuality());
+  const [fpsLimit, setFpsLimit] = useState<FpsLimit>(() => loadSavedFpsLimit());
   const [muted, setMuted] = useState<boolean>(() => loadSavedMuted());
+  const [musicVolume, setMusicVolume] = useState<number>(() => loadMusicVolume());
+  const [sfxVolume, setSfxVolume] = useState<number>(() => loadSfxVolume());
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() => loadSavedHaptics());
   const [engineError, setEngineError] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
@@ -74,8 +102,21 @@ export const App: React.FC = () => {
     heroPowerReady: false,
     heroPowerActiveRemaining: 0,
     heroPassiveSummary: '+10% Score final en course',
+    shibaName: 'Shiba Ninja',
+    shibaPowerName: 'Pluie d’Or x2',
+    shibaPowerAccent: '#f97316',
+    shibaPowerChargePct: 100,
+    shibaPowerReady: true,
+    shibaPowerActiveRemaining: 0,
+    shibaCoinX2Active: false,
     nearMissCount: 0,
+    nearMissCombo: 0,
+    nearMissComboTimer: 0,
     nearMissLabel: null,
+    rushLettersMask: 0,
+    speedLinesIntensity: 0,
+    tutorialStep: null,
+    recordGateMeters: null,
     biomeName: 'Sakura Ueno',
     canRevive: true,
     revivedUsed: false,
@@ -96,6 +137,11 @@ export const App: React.FC = () => {
     actions.consumeBoostFlagsAfterRun();
   };
 
+  const rushWordCompletedRef = useRef<() => void>(() => {});
+  rushWordCompletedRef.current = () => {
+    actions.claimRushWordBonus();
+  };
+
   useEffect(() => {
     const container = stageRef.current;
     if (!container) return;
@@ -108,6 +154,7 @@ export const App: React.FC = () => {
         muted,
         (snapshot) => setHud(snapshot),
         (telemetry) => recordRunRef.current(telemetry),
+        () => rushWordCompletedRef.current(),
       );
       engineRef.current = engine;
       requestAnimationFrame(() => {
@@ -194,6 +241,10 @@ export const App: React.FC = () => {
       profile.upgradeScoreLevel,
     );
     engineRef.current?.setHapticsEnabled(hapticsEnabled);
+    engineRef.current?.setFpsLimit(fpsLimit);
+    engineRef.current?.setMusicVolume(musicVolume);
+    engineRef.current?.setSfxVolume(sfxVolume);
+    engineRef.current?.setRushLettersMask(profile.rushLettersMask);
   }, [
     profile.equippedHeroId,
     profile.equippedCompanionId,
@@ -205,7 +256,26 @@ export const App: React.FC = () => {
     profile.upgradeCarLevel,
     profile.upgradeShieldLevel,
     profile.upgradeScoreLevel,
+    profile.rushLettersMask,
     hapticsEnabled,
+    fpsLimit,
+    musicVolume,
+    sfxVolume,
+  ]);
+
+  // Warm up 3D thumbnails for currently equipped hero, car, and Shiba on Lobby entry
+  useEffect(() => {
+    if (hud.phase !== 'TITLE') return;
+    void warmupEquippedThumbnails(
+      profile.equippedHeroId,
+      profile.equippedCarId,
+      profile.equippedCompanionId,
+    );
+  }, [
+    hud.phase,
+    profile.equippedHeroId,
+    profile.equippedCarId,
+    profile.equippedCompanionId,
   ]);
 
   // Pause idle 3D simulation while full-screen modal sheet is covering the viewport
@@ -250,11 +320,39 @@ export const App: React.FC = () => {
     engineRef.current?.activateHeroPower();
   }, []);
 
+  const handleActivateShibaPower = useCallback(() => {
+    engineRef.current?.activateShibaPower();
+  }, []);
+
   const handleQualityChange = useCallback((nextQuality: QualityLevel) => {
     setQuality(nextQuality);
     saveQuality(nextQuality);
     engineRef.current?.setQuality(nextQuality);
   }, []);
+
+  const handleFpsLimitChange = useCallback((nextFps: FpsLimit) => {
+    setFpsLimit(nextFps);
+    saveFpsLimit(nextFps);
+    engineRef.current?.setFpsLimit(nextFps);
+  }, []);
+
+  const handleMusicVolumeChange = useCallback((vol: number) => {
+    setMusicVolume(vol);
+    saveMusicVolume(vol);
+    engineRef.current?.setMusicVolume(vol);
+  }, []);
+
+  const handleSfxVolumeChange = useCallback((vol: number) => {
+    setSfxVolume(vol);
+    saveSfxVolume(vol);
+    engineRef.current?.setSfxVolume(vol);
+  }, []);
+
+  const handleReplayTutorial = useCallback(() => {
+    saveTutorialDone(false);
+    engineRef.current?.setTutorialEnabled(true);
+    actions.showToast('Tutoriel gestuel réactivé pour ta prochaine course !');
+  }, [actions]);
 
   const handleToggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -289,28 +387,82 @@ export const App: React.FC = () => {
     engineRef.current?.playUiSound();
     if (tab === 'home') {
       setActiveModal(null);
-    } else if (tab === 'heroes') {
-      setActiveModal('heroes');
-    } else if (tab === 'shop') {
-      setActiveModal('shop');
-    } else if (tab === 'pass') {
-      setActiveModal('pass');
+      return;
     }
+    setActiveModal((prev) => {
+      if (tab === 'missions') {
+        return prev === 'missions' || prev === 'achievements' ? null : 'missions';
+      }
+      if (tab === 'heroes') {
+        return prev === 'heroes' || prev === 'cars' || prev === 'companions' ? null : 'heroes';
+      }
+      if (tab === 'shop') {
+        return prev === 'shop' || prev === 'inventory' ? null : 'shop';
+      }
+      if (tab === 'pass') {
+        return prev === 'pass' || prev === 'event' ? null : 'pass';
+      }
+      return null;
+    });
   }, []);
 
   const activeBottomTab: BottomTab = useMemo(() => {
-    if (activeModal === 'heroes') return 'heroes';
-    if (activeModal === 'shop') return 'shop';
+    if (activeModal === 'missions' || activeModal === 'achievements') return 'missions';
+    if (activeModal === 'heroes' || activeModal === 'cars' || activeModal === 'companions') {
+      return 'heroes';
+    }
+    if (activeModal === 'shop' || activeModal === 'inventory') return 'shop';
     if (activeModal === 'pass' || activeModal === 'event') return 'pass';
     return 'home';
   }, [activeModal]);
 
-  const hasClaimablePassTier = useMemo(() => {
-    for (let t = 1; t <= Math.min(10, profile.seasonLevel); t++) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (hud.phase !== 'TITLE') return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, [hud.phase]);
+
+  const displayMultiplier = useMemo(() => {
+    if (selectedBoosts.useMultiplier) return 5;
+    if (profile.activeMultiplier > 1 && profile.multiplierExpiresAt > nowMs) {
+      return profile.activeMultiplier;
+    }
+    return 1;
+  }, [selectedBoosts.useMultiplier, profile.activeMultiplier, profile.multiplierExpiresAt, nowMs]);
+
+  const missionsBadgeCount = useMemo(() => {
+    const readyMissions = MISSIONS_CATALOG.filter(
+      (m) => !m.isClaimed(profile) && m.getProgress(profile) >= m.target,
+    ).length;
+    const readyAchievements = ACHIEVEMENTS_CATALOG.filter(
+      (a) => !profile.claimedAchievementIds.includes(a.id) && a.getCurrent(profile) >= a.target,
+    ).length;
+    return readyMissions + readyAchievements;
+  }, [profile]);
+
+  const shopBadgeCount = useMemo(
+    () =>
+      profile.inventoryMagnets +
+      profile.inventoryShields +
+      profile.inventoryMultipliers +
+      profile.inventoryHeadStarts,
+    [
+      profile.inventoryMagnets,
+      profile.inventoryShields,
+      profile.inventoryMultipliers,
+      profile.inventoryHeadStarts,
+    ],
+  );
+
+  const hasClaimablePassOrChest = useMemo(() => {
+    if (profile.nextFreeChestAt <= nowMs) return true;
+    const maxTier = Math.min(SEASON_TIERS.length, profile.seasonLevel);
+    for (let t = 1; t <= maxTier; t++) {
       if (!profile.claimedSeasonTiers.includes(t)) return true;
     }
     return false;
-  }, [profile.seasonLevel, profile.claimedSeasonTiers]);
+  }, [profile.seasonLevel, profile.claimedSeasonTiers, profile.nextFreeChestAt, nowMs]);
 
   const canAffordNewHero = useMemo(
     () =>
@@ -323,8 +475,19 @@ export const App: React.FC = () => {
         (c) =>
           !profile.unlockedCarIds.includes(c.id) &&
           (c.currency === 'coins' ? profile.coins >= c.cost : profile.gems >= c.cost),
+      ) ||
+      COMPANION_CATALOG.some(
+        (s) =>
+          !profile.unlockedCompanionIds.includes(s.id) &&
+          (s.currency === 'coins' ? profile.coins >= s.cost : profile.gems >= s.cost),
       ),
-    [profile.coins, profile.gems, profile.unlockedHeroIds, profile.unlockedCarIds],
+    [
+      profile.coins,
+      profile.gems,
+      profile.unlockedHeroIds,
+      profile.unlockedCarIds,
+      profile.unlockedCompanionIds,
+    ],
   );
 
   return (
@@ -344,6 +507,9 @@ export const App: React.FC = () => {
         <div className="lobby-shell">
           <TopBar
             profile={profile}
+            displayMultiplier={displayMultiplier}
+            onOpenShop={() => handleOpenModal('shop')}
+            onOpenBoosts={() => handleOpenModal('inventory')}
             onOpenSettings={() => handleOpenModal('settings')}
           />
 
@@ -351,16 +517,18 @@ export const App: React.FC = () => {
             profile={profile}
             social={social}
             selectedBoosts={selectedBoosts}
+            displayMultiplier={displayMultiplier}
             onStartRun={handlePlay}
             onClaimFreeChest={actions.claimFreeChest}
-            onShowToast={actions.showToast}
             onOpenModal={handleOpenModal}
           />
 
           <BottomNavBar
             activeTab={activeBottomTab}
+            missionsBadgeCount={missionsBadgeCount}
             heroesBadge={canAffordNewHero}
-            passBadge={hasClaimablePassTier}
+            shopBadgeCount={shopBadgeCount > 0 ? shopBadgeCount : 0}
+            passBadge={hasClaimablePassOrChest}
             onSelectTab={handleSelectBottomTab}
           />
         </div>
@@ -372,17 +540,20 @@ export const App: React.FC = () => {
           onPause={handlePause}
           onActivateCar={handleActivateCar}
           onActivateHeroPower={handleActivateHeroPower}
+          onActivateShibaPower={handleActivateShibaPower}
         />
       )}
 
       {!engineError && hud.phase === 'PAUSED' && (
         <PauseModal
           quality={quality}
+          fpsLimit={fpsLimit}
           muted={muted}
           onResume={handleResume}
           onRestart={handleRestart}
           onHome={handleHome}
           onQualityChange={handleQualityChange}
+          onFpsLimitChange={handleFpsLimitChange}
           onToggleMute={handleToggleMute}
         />
       )}
@@ -398,57 +569,69 @@ export const App: React.FC = () => {
       )}
 
       {/* Lobby Functional Modals */}
-      {hud.phase === 'TITLE' && activeModal === 'shop' && (
+      {hud.phase === 'TITLE' && (activeModal === 'shop' || activeModal === 'inventory') && (
         <ShopModal
+          initialTab={activeModal === 'inventory' ? 'inventory' : 'shop'}
           profile={profile}
+          selectedBoosts={selectedBoosts}
+          gachaResult={gachaResult}
           onBuyItem={(itemType, itemId, currency, cost) => {
             engineRef.current?.playCashSound();
             actions.purchaseShopItem(itemType, itemId, currency, cost);
           }}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
-
-      {hud.phase === 'TITLE' && activeModal === 'heroes' && (
-        <HeroesModal
-          profile={profile}
-          onEquip={(heroId, compId) => {
-            engineRef.current?.playUiSound();
-            actions.equipLoadout(heroId, compId);
+          onToggleBoost={actions.toggleBoost}
+          onActivateMultiplier={actions.activateMultiplierBoost}
+          onDrawCapsule={(mode) => {
+            engineRef.current?.playGachaSound();
+            actions.drawDojoCapsule(mode);
           }}
-          onEquipCar={(carId) => {
-            engineRef.current?.playUiSound();
-            actions.equipCar(carId);
-          }}
-          onBuyCharacter={(itemType, itemId, currency, cost) => {
-            engineRef.current?.playUnlockSound();
-            actions.purchaseShopItem(itemType, itemId, currency, cost);
-          }}
-          onPurchaseUpgrade={(upgradeId, cost) => {
-            engineRef.current?.playUpgradeSound();
-            actions.purchaseUpgrade(upgradeId, cost);
-          }}
+          onClearGachaResult={actions.clearGachaResult}
           onClose={() => setActiveModal(null)}
         />
       )}
 
       {hud.phase === 'TITLE' &&
-        (activeModal === 'inventory' || activeModal === 'collection') && (
-          <InventoryAndCollectionModal
-            mode={activeModal}
+        (activeModal === 'heroes' || activeModal === 'cars' || activeModal === 'companions') && (
+          <HeroesModal
+            initialSubTab={
+              activeModal === 'cars'
+                ? 'cars'
+                : activeModal === 'companions'
+                  ? 'companions'
+                  : 'heroes'
+            }
             profile={profile}
-            selectedBoosts={selectedBoosts}
-            onToggleBoost={actions.toggleBoost}
-            onActivateMultiplier={actions.activateMultiplierBoost}
-            onOpenShop={() => setActiveModal('shop')}
+            onEquip={(heroId, compId) => {
+              engineRef.current?.playUiSound();
+              actions.equipLoadout(heroId, compId);
+            }}
+            onEquipCar={(carId) => {
+              engineRef.current?.playUiSound();
+              actions.equipCar(carId);
+            }}
+            onBuyCharacter={(itemType, itemId, currency, cost) => {
+              engineRef.current?.playUnlockSound();
+              actions.purchaseShopItem(itemType, itemId, currency, cost);
+            }}
+            onPurchaseUpgrade={(upgradeId, cost) => {
+              engineRef.current?.playUpgradeSound();
+              actions.purchaseUpgrade(upgradeId, cost);
+            }}
             onClose={() => setActiveModal(null)}
           />
         )}
 
+      {hud.phase === 'TITLE' && activeModal === 'collection' && (
+        <InventoryAndCollectionModal
+          profile={profile}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
       {hud.phase === 'TITLE' &&
         (activeModal === 'missions' || activeModal === 'achievements') && (
           <MissionsAndAchievementsModal
-            mode={activeModal}
+            initialTab={activeModal === 'achievements' ? 'achievements' : 'daily'}
             profile={profile}
             onClaimMission={actions.claimMission}
             onClaimAchievement={actions.claimAchievement}
@@ -462,36 +645,61 @@ export const App: React.FC = () => {
           profile={profile}
           onClaimSeasonTier={actions.claimSeasonTier}
           onClaimEventMilestone={actions.claimEventMilestone}
+          onClaimFreeChest={actions.claimFreeChest}
+          onShowToast={actions.showToast}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {hud.phase === 'TITLE' && activeModal === 'inbox' && (
+        <SocialHubModal
+          initialTab="inbox"
+          profile={profile}
+          social={social}
+          onRefreshLeaderboard={actions.fetchLeaderboard}
+          onClaimInbox={actions.claimInboxMessage}
+          onClaimAllInbox={actions.claimAllInbox}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {hud.phase === 'TITLE' && activeModal === 'daily_login' && (
+        <DailyLoginModal
+          profile={profile}
+          loginReward={loginReward}
+          onClaim={() => {
+            engineRef.current?.playChestSound();
+            actions.claimDailyLogin();
+          }}
+          onClearReward={actions.clearLoginReward}
           onClose={() => setActiveModal(null)}
         />
       )}
 
       {hud.phase === 'TITLE' &&
-        (activeModal === 'leaderboard' || activeModal === 'inbox') && (
-          <SocialHubModal
-            initialTab={activeModal}
+        (activeModal === 'settings' || activeModal === 'leaderboard') && (
+          <SettingsModal
+            initialTab={activeModal === 'leaderboard' ? 'leaderboard' : 'profile'}
             profile={profile}
             social={social}
+            quality={quality}
+            fpsLimit={fpsLimit}
+            muted={muted}
+            musicVolume={musicVolume}
+            sfxVolume={sfxVolume}
+            hapticsEnabled={hapticsEnabled}
             onRefreshLeaderboard={actions.fetchLeaderboard}
-            onClaimInbox={actions.claimInboxMessage}
-            onClaimAllInbox={actions.claimAllInbox}
+            onSaveDisplayName={actions.updateDisplayName}
+            onQualityChange={handleQualityChange}
+            onFpsLimitChange={handleFpsLimitChange}
+            onToggleMute={handleToggleMute}
+            onMusicVolumeChange={handleMusicVolumeChange}
+            onSfxVolumeChange={handleSfxVolumeChange}
+            onToggleHaptics={handleToggleHaptics}
+            onReplayTutorial={handleReplayTutorial}
             onClose={() => setActiveModal(null)}
           />
         )}
-
-      {hud.phase === 'TITLE' && activeModal === 'settings' && (
-        <SettingsModal
-          profile={profile}
-          quality={quality}
-          muted={muted}
-          hapticsEnabled={hapticsEnabled}
-          onSaveDisplayName={actions.updateDisplayName}
-          onQualityChange={handleQualityChange}
-          onToggleMute={handleToggleMute}
-          onToggleHaptics={handleToggleHaptics}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
 
       {chestReward && (
         <FreeChestModal reward={chestReward} onClose={actions.clearChestReward} />

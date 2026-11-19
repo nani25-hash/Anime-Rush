@@ -236,6 +236,11 @@ class MainActivity : ComponentActivity() {
       consumedShield: Boolean,
       consumedMultiplier: Boolean,
       consumedHeadStart: Boolean,
+      nearMisses: Long,
+      shibaActivations: Long,
+      carDistance: Long,
+      trainJumps: Long,
+      rushLettersMaskEarned: Int,
     ) {
       lifecycleScope.launch(Dispatchers.IO) {
         localGameRepository
@@ -250,6 +255,11 @@ class MainActivity : ComponentActivity() {
             consumedShield = consumedShield,
             consumedMultiplier = consumedMultiplier,
             consumedHeadStart = consumedHeadStart,
+            nearMisses = nearMisses,
+            shibaActivations = shibaActivations,
+            carDistance = carDistance,
+            trainJumps = trainJumps,
+            rushLettersMaskEarned = rushLettersMaskEarned,
           )
           .onSuccess {
             syncProfileToWeb(it)
@@ -328,6 +338,63 @@ class MainActivity : ComponentActivity() {
             emitToWeb("toast", JSONObject().apply { put("message", "Récompense Sakura réclamée !") })
           }
           .onFailure { emitError("claimEventMilestone", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun claimDailyLogin() {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .claimDailyLogin()
+          .onSuccess { reward ->
+            emitToWeb("loginReward", reward.toJsonObject())
+            localGameRepository.getCurrentProfile().onSuccess {
+              syncProfileToWeb(it)
+              refreshSocialBundle()
+            }
+          }
+          .onFailure { emitError("claimDailyLogin", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun claimRushWordBonus() {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .claimRushWordBonus()
+          .onSuccess { reward ->
+            emitToWeb("rushWordReward", reward.toJsonObject())
+            emitToWeb(
+              "toast",
+              JSONObject().apply {
+                put(
+                  "message",
+                  "Mot R-U-S-H complété ! +${reward.coins} pièces & +${reward.gems} gemmes !",
+                )
+              },
+            )
+            localGameRepository.getCurrentProfile().onSuccess {
+              syncProfileToWeb(it)
+              refreshSocialBundle()
+            }
+          }
+          .onFailure { emitError("claimRushWordBonus", it) }
+      }
+    }
+
+    @JavascriptInterface
+    fun drawDojoCapsule(currencyMode: String) {
+      lifecycleScope.launch(Dispatchers.IO) {
+        localGameRepository
+          .drawDojoCapsule(currencyMode)
+          .onSuccess { outcome ->
+            emitToWeb("gachaResult", outcome.toJsonObject())
+            localGameRepository.getCurrentProfile().onSuccess {
+              syncProfileToWeb(it)
+              refreshSocialBundle()
+            }
+          }
+          .onFailure { emitError("drawDojoCapsule", it) }
       }
     }
 

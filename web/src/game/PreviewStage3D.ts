@@ -9,6 +9,13 @@ import { ConvertibleCar3D } from './ConvertibleCar3D';
 import { RunnerCharacter } from './RunnerCharacter';
 import { ShibaCompanion } from './ShibaCompanion';
 import { createRadialShadowTexture } from './textures';
+import {
+  encodeCanvasThumbnail,
+  getAllCachedThumbnails,
+  hasCachedThumbnail,
+  hydrateThumbnailCache,
+  setCachedThumbnail,
+} from './thumbnailStore';
 
 export type PreviewMode = 'heroes' | 'cars' | 'companions';
 
@@ -19,7 +26,137 @@ export interface PreviewSelection {
   companionId: string;
 }
 
-const thumbnailCache = new Map<string, string>();
+/**
+ * Warms up 3D thumbnails for the currently equipped hero, car, and Shiba companion
+ * using a short-lived offscreen canvas so Lobby portraits appear immediately on startup.
+ */
+export async function warmupEquippedThumbnails(
+  heroId: string,
+  carId: string,
+  companionId: string,
+): Promise<void> {
+  if (typeof document === 'undefined') return;
+  await hydrateThumbnailCache();
+
+  const needHero = !hasCachedThumbnail(`hero:${heroId}`);
+  const needCar = !hasCachedThumbnail(`car:${carId}`);
+  const needComp = !hasCachedThumbnail(`comp:${companionId}`);
+  if (!needHero && !needCar && !needComp) return;
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = 128;
+  offscreen.height = 128;
+
+  let renderer: THREE.WebGLRenderer | null = null;
+  let pmremTarget: THREE.WebGLRenderTarget | null = null;
+  let shadowTex: THREE.Texture | null = null;
+  let runner: RunnerCharacter | null = null;
+  let car: ConvertibleCar3D | null = null;
+  let shiba: ShibaCompanion | null = null;
+
+  try {
+    renderer = new THREE.WebGLRenderer({
+      canvas: offscreen,
+      alpha: true,
+      antialias: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'low-power',
+    });
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.24;
+    renderer.setClearColor(0x000000, 0);
+    renderer.setPixelRatio(1);
+    renderer.setSize(128, 128, false);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.2, 40);
+
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const room = new RoomEnvironment();
+      pmremTarget = pmrem.fromScene(room, 0.04);
+      scene.environment = pmremTarget.texture;
+      room.dispose();
+      pmrem.dispose();
+    } catch {
+      pmremTarget = null;
+    }
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.45);
+    const keyLight = new THREE.DirectionalLight(0xfffbeb, 1.9);
+    keyLight.position.set(3.5, 6.2, 5.2);
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.85);
+    rimLight.position.set(-4.5, 3.0, -3.5);
+    scene.add(hemi, keyLight, rimLight);
+
+    const turntable = new THREE.Group();
+    scene.add(turntable);
+
+    shadowTex = createRadialShadowTexture();
+    runner = new RunnerCharacter(shadowTex, heroId);
+    car = new ConvertibleCar3D(shadowTex, carId);
+    shiba = new ShibaCompanion(shadowTex, companionId);
+    turntable.add(runner.root, car.root, shiba.root);
+
+    if (needHero) {
+      camera.position.set(0, 1.38, 3.05);
+      camera.lookAt(0, 0.96, 0);
+      camera.updateProjectionMatrix();
+      runner.root.visible = true;
+      runner.root.position.set(0, 0, 0);
+      car.setVisible(false);
+      shiba.root.visible = false;
+      turntable.rotation.y = Math.PI - 0.26;
+      runner.setSkin(heroId);
+      runner.update(0.016, 'TITLE', 0, 0, 0);
+      renderer.render(scene, camera);
+      setCachedThumbnail(`hero:${heroId}`, encodeCanvasThumbnail(offscreen));
+    }
+
+    if (needCar) {
+      camera.position.set(0, 1.55, 4.1);
+      camera.lookAt(0, 0.62, 0);
+      camera.updateProjectionMatrix();
+      runner.root.visible = true;
+      runner.root.position.set(0, 0.02, 0.04);
+      runner.setSkin('ryu');
+      runner.update(0.016, 'SEATED_CAR', 0, 0, 0);
+      car.setVisible(true);
+      car.root.position.set(0, 0, 0);
+      shiba.root.visible = false;
+      turntable.rotation.y = Math.PI - 0.56;
+      car.setCarModel(carId);
+      car.update(0.016, 0, 0);
+      renderer.render(scene, camera);
+      setCachedThumbnail(`car:${carId}`, encodeCanvasThumbnail(offscreen));
+    }
+
+    if (needComp) {
+      camera.position.set(0, 0.92, 2.25);
+      camera.lookAt(0, 0.42, 0);
+      camera.updateProjectionMatrix();
+      runner.root.visible = false;
+      car.setVisible(false);
+      shiba.root.visible = true;
+      shiba.root.position.set(0, 0, 0);
+      turntable.rotation.y = Math.PI - 0.34;
+      shiba.setSkin(companionId);
+      shiba.update(0.016, 'TITLE', 0, 0, 0, 0);
+      shiba.root.position.set(0, 0, 0);
+      renderer.render(scene, camera);
+      setCachedThumbnail(`comp:${companionId}`, encodeCanvasThumbnail(offscreen));
+    }
+  } catch {
+    // Graceful silent fallback to kanji/icons if offscreen WebGL is restricted
+  } finally {
+    runner?.dispose();
+    car?.dispose();
+    shiba?.dispose();
+    shadowTex?.dispose();
+    pmremTarget?.dispose();
+    renderer?.dispose();
+  }
+}
 
 /**
  * Single shared WebGL showroom renderer + cached portrait thumbnail generator.
@@ -88,13 +225,13 @@ export class PreviewStage3D {
     this.shadowTex = createRadialShadowTexture();
     const pedGeo = new THREE.CylinderGeometry(1.42, 1.54, 0.14, 32);
     const pedMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      roughness: 0.42,
-      metalness: 0.18,
+      color: 0x0f172a,
+      roughness: 0.34,
+      metalness: 0.55,
     });
     const pedRingGeo = new THREE.TorusGeometry(1.44, 0.04, 8, 36);
     pedRingGeo.rotateX(Math.PI / 2);
-    const pedRingMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
+    const pedRingMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
     this.disposables.push(pedGeo, pedMat, pedRingGeo, pedRingMat);
 
     this.pedestal = new THREE.Mesh(pedGeo, pedMat);
@@ -116,13 +253,16 @@ export class PreviewStage3D {
       if (this.disposed) return;
       this.captureSingleHeroThumbnail('miss_maia');
       if (onThumbnailsReady) {
-        onThumbnailsReady(this.getCachedThumbnailsRecord());
+        onThumbnailsReady(getAllCachedThumbnails());
       }
       this.applySelection(this.selection);
     });
 
     this.applySelection(initialSelection);
-    this.generateMissingThumbnails(onThumbnailsReady);
+    void hydrateThumbnailCache().then(() => {
+      if (this.disposed) return;
+      this.generateMissingThumbnails(onThumbnailsReady);
+    });
     this.resizeToContainer();
     this.attachPointerControls();
     this.startLoop();
@@ -167,8 +307,8 @@ export class PreviewStage3D {
       this.car.setVisible(false);
       this.shiba.root.visible = false;
       this.pedestal.scale.set(0.88, 1, 0.88);
-      this.camera.position.set(0, 1.38, 3.65);
-      this.camera.lookAt(0, 0.96, 0);
+      this.camera.position.set(-0.36, 1.38, 3.65);
+      this.camera.lookAt(-0.36, 0.96, 0);
     } else if (sel.mode === 'cars') {
       this.runner.root.visible = true;
       this.runner.root.position.set(0, 0.02, 0.04);
@@ -176,16 +316,16 @@ export class PreviewStage3D {
       this.car.root.position.set(0, 0, 0);
       this.shiba.root.visible = false;
       this.pedestal.scale.set(1.22, 1, 1.22);
-      this.camera.position.set(0, 1.75, 4.75);
-      this.camera.lookAt(0, 0.72, 0);
+      this.camera.position.set(-0.42, 1.75, 4.75);
+      this.camera.lookAt(-0.42, 0.72, 0);
     } else {
       this.runner.root.visible = false;
       this.car.setVisible(false);
       this.shiba.root.visible = true;
       this.shiba.root.position.set(0, 0, 0);
       this.pedestal.scale.set(0.75, 1, 0.75);
-      this.camera.position.set(0, 0.98, 2.55);
-      this.camera.lookAt(0, 0.44, 0);
+      this.camera.position.set(-0.30, 0.98, 2.55);
+      this.camera.lookAt(-0.30, 0.44, 0);
     }
   }
 
@@ -197,14 +337,6 @@ export class PreviewStage3D {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-  }
-
-  private getCachedThumbnailsRecord(): Record<string, string> {
-    const out: Record<string, string> = {};
-    thumbnailCache.forEach((v, k) => {
-      out[k] = v;
-    });
-    return out;
   }
 
   private captureSingleHeroThumbnail(heroId: string): void {
@@ -228,7 +360,7 @@ export class PreviewStage3D {
     this.runner.update(0.016, 'TITLE', 0, 0, 0);
     this.turntable.rotation.y = Math.PI - 0.26;
     this.renderer.render(this.scene, this.camera);
-    thumbnailCache.set(`hero:${heroId}`, this.canvas.toDataURL('image/png'));
+    setCachedThumbnail(`hero:${heroId}`, encodeCanvasThumbnail(this.canvas));
 
     this.pedestal.visible = prevPedestalVis;
     this.turntable.rotation.y = prevYaw;
@@ -239,12 +371,12 @@ export class PreviewStage3D {
   private generateMissingThumbnails(
     onThumbnailsReady?: (thumbs: Record<string, string>) => void,
   ): void {
-    const needHeroes = HERO_CATALOG.some((h) => !thumbnailCache.has(`hero:${h.id}`));
-    const needCars = CAR_CATALOG.some((c) => !thumbnailCache.has(`car:${c.id}`));
-    const needComps = COMPANION_CATALOG.some((c) => !thumbnailCache.has(`comp:${c.id}`));
+    const needHeroes = HERO_CATALOG.some((h) => !hasCachedThumbnail(`hero:${h.id}`));
+    const needCars = CAR_CATALOG.some((c) => !hasCachedThumbnail(`car:${c.id}`));
+    const needComps = COMPANION_CATALOG.some((c) => !hasCachedThumbnail(`comp:${c.id}`));
 
     if (!needHeroes && !needCars && !needComps) {
-      onThumbnailsReady?.(this.getCachedThumbnailsRecord());
+      onThumbnailsReady?.(getAllCachedThumbnails());
       return;
     }
 
@@ -267,11 +399,11 @@ export class PreviewStage3D {
       this.turntable.rotation.y = Math.PI - 0.26;
       for (const hero of HERO_CATALOG) {
         const key = `hero:${hero.id}`;
-        if (thumbnailCache.has(key)) continue;
+        if (hasCachedThumbnail(key)) continue;
         this.runner.setSkin(hero.id);
         this.runner.update(0.016, 'TITLE', 0, 0, 0);
         this.renderer.render(this.scene, this.camera);
-        thumbnailCache.set(key, this.canvas.toDataURL('image/png'));
+        setCachedThumbnail(key, encodeCanvasThumbnail(this.canvas));
       }
     }
 
@@ -290,11 +422,11 @@ export class PreviewStage3D {
       this.turntable.rotation.y = Math.PI - 0.56;
       for (const car of CAR_CATALOG) {
         const key = `car:${car.id}`;
-        if (thumbnailCache.has(key)) continue;
+        if (hasCachedThumbnail(key)) continue;
         this.car.setCarModel(car.id);
         this.car.update(0.016, 0, 0);
         this.renderer.render(this.scene, this.camera);
-        thumbnailCache.set(key, this.canvas.toDataURL('image/png'));
+        setCachedThumbnail(key, encodeCanvasThumbnail(this.canvas));
       }
     }
 
@@ -310,13 +442,12 @@ export class PreviewStage3D {
       this.turntable.rotation.y = Math.PI - 0.34;
       for (const comp of COMPANION_CATALOG) {
         const key = `comp:${comp.id}`;
-        if (thumbnailCache.has(key)) continue;
+        if (hasCachedThumbnail(key)) continue;
         this.shiba.setSkin(comp.id);
         this.shiba.update(0.016, 'TITLE', 0, 0, 0, 0);
-        // keep shiba centered at origin for thumbnail
         this.shiba.root.position.set(0, 0, 0);
         this.renderer.render(this.scene, this.camera);
-        thumbnailCache.set(key, this.canvas.toDataURL('image/png'));
+        setCachedThumbnail(key, encodeCanvasThumbnail(this.canvas));
       }
     }
 
@@ -324,7 +455,7 @@ export class PreviewStage3D {
     this.turntable.rotation.y = Math.PI - 0.28;
     this.applySelection(prevSel);
     this.resizeToContainer();
-    onThumbnailsReady?.(this.getCachedThumbnailsRecord());
+    onThumbnailsReady?.(getAllCachedThumbnails());
   }
 
   private onPointerDown = (e: PointerEvent): void => {

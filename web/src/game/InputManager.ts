@@ -5,7 +5,8 @@ export type InputAction =
   | 'SLIDE'
   | 'PAUSE'
   | 'ACTIVATE_CAR'
-  | 'ACTIVATE_POWER';
+  | 'ACTIVATE_POWER'
+  | 'ACTIVATE_SHIBA_POWER';
 
 export class InputManager {
   private readonly target: HTMLElement;
@@ -121,6 +122,10 @@ export class InputManager {
       case 'KeyF':
       case 'KeyV':
         this.onAction('ACTIVATE_POWER');
+        break;
+      case 'KeyG':
+      case 'KeyB':
+        this.onAction('ACTIVATE_SHIBA_POWER');
         break;
       case 'Escape':
       case 'KeyP':
